@@ -170,6 +170,23 @@ k_install_system_files() {
   ln -sf "/usr/lib/systemd/system/debz-firstboot.service" \
     "${target}/etc/systemd/system/multi-user.target.wants/debz-firstboot.service" || true
 
+  # ── User tools: mdir (ZFS dataset creator) + adduser.local hook ────────────
+  mkdir -p "${target}/usr/local/bin" "${target}/usr/local/sbin"
+  [[ -x /usr/local/bin/mdir ]] && \
+    cp /usr/local/bin/mdir "${target}/usr/local/bin/mdir" && \
+    chmod +x "${target}/usr/local/bin/mdir"
+  [[ -f /usr/local/sbin/adduser.local ]] && \
+    cp /usr/local/sbin/adduser.local "${target}/usr/local/sbin/adduser.local" && \
+    chmod +x "${target}/usr/local/sbin/adduser.local"
+
+  # ── GNOME dconf system settings (dock, theme, defaults) ─────────────────────
+  if [[ -d /etc/dconf/db/local.d ]]; then
+    mkdir -p "${target}/etc/dconf/db/local.d"
+    cp /etc/dconf/db/local.d/00-debz-desktop "${target}/etc/dconf/db/local.d/00-debz-desktop" 2>/dev/null || true
+    mkdir -p "${target}/etc/dconf/profile"
+    cp /etc/dconf/profile/user "${target}/etc/dconf/profile/user" 2>/dev/null || true
+  fi
+
   # ── Backend runtime tools (debz-be, debz-recovery, debz-upgrade) ───────────
   if [[ -d /usr/lib/debz-installer/backend ]]; then
     mkdir -p "${target}/usr/lib/debz-installer/backend/bin"

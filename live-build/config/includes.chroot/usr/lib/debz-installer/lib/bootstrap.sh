@@ -321,6 +321,12 @@ k_bootstrap_base() {
   k_in_chroot "${target}" locale-gen "${DEBZ_LOCALE:-en_US.UTF-8}"
   k_create_users
   k_install_system_files
+
+  # ── Compile dconf system database in target chroot ──────────────────────────
+  if [[ -d "${target}/etc/dconf/db/local.d" ]]; then
+    k_in_chroot "${target}" dconf update 2>/dev/null || true
+  fi
+
   k_write_manifest
 
   # Switch sources.list from the install-time mirror to the final post-install
