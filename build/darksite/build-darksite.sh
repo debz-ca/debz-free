@@ -375,12 +375,12 @@ fi
 # Firstboot scripts install them from here when running offline.
 # Pro/Enterprise only — skip entirely for free edition.
 # ---------------------------------------------------------------------------
+BINARIES_DIR="${DARKSITE_OUT}/binaries"
+mkdir -p "${BINARIES_DIR}"
+
 if [[ "${EDITION:-free}" == "free" ]]; then
     log "Free edition: skipping Pro binaries (k9s, helm, firecracker, etc.)"
 else
-
-BINARIES_DIR="${DARKSITE_OUT}/binaries"
-mkdir -p "${BINARIES_DIR}"
 
 gh_latest_version() {
     # Resolve latest release tag for a GitHub repo (owner/repo)
