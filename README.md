@@ -31,22 +31,27 @@ debz is a live bootable OS image that installs Debian 13 with ZFS on root as the
 
 ## Building
 
-Requirements: `docker` or `podman`, `git`. Everything else runs in the container.
+**Host requirements:** `docker` (or `podman`) and `git`. That's it. live-build, debootstrap, ZFS tools, and all build dependencies run inside the container — nothing else needs to be installed on your machine.
 
 ```bash
 # Clone
-git clone https://github.com/unixbox-net/debz.git
+git clone https://github.com/debz-ca/debz.git
 cd debz
 
-# Build ISO
+# First time: build the builder container image (~5 min)
+./deploy.sh builder-image
+
+# Build the ISO (~20-40 min depending on network, darksite downloads ~2500 packages)
 ./deploy.sh build-live
 
-# Or full clean rebuild
-./deploy.sh rebuild
+# ISO lands at:
+./deploy.sh latest-iso
 
-# Deploy to Proxmox test VM
-./deploy.sh deploy
+# Or full clean rebuild in one step
+./deploy.sh rebuild
 ```
+
+Works on any Linux host with Docker or Podman. Tested on Debian, Ubuntu, Fedora.
 
 ### Build commands
 
