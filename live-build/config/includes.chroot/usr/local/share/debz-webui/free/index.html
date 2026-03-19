@@ -217,6 +217,28 @@
               <input type="password" id="install-pass2" placeholder="••••••••" oninput="checkPass()">
               <div class="pass-hint" id="pass-match"></div>
             </div>
+            <div class="form-group" style="margin-top:0.5rem">
+              <label>ZFS encryption</label>
+              <select id="install-encryption" onchange="toggleEncryption()">
+                <option value="0">None — standard ZFS (recommended)</option>
+                <option value="1">Encrypted — AES-256-GCM, passphrase at boot</option>
+              </select>
+            </div>
+            <div id="enc-passphrase-group" style="display:none">
+              <div class="form-group">
+                <label>ZFS passphrase</label>
+                <input type="password" id="enc-pass" placeholder="min 8 characters" oninput="checkEncPass()">
+                <div class="pass-hint" id="enc-pass-hint"></div>
+              </div>
+              <div class="form-group">
+                <label>Confirm passphrase</label>
+                <input type="password" id="enc-pass2" placeholder="confirm passphrase" oninput="checkEncPass()">
+                <div class="pass-hint" id="enc-pass-match"></div>
+              </div>
+              <div class="note" style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem">
+                ZFSBootMenu will prompt for this passphrase on every boot before mounting the root pool. Store it somewhere safe — there is no recovery.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -731,6 +753,25 @@ function toggleDHCP() {
 }
 
 // ── Password check ───────────────────────────────────────────────────────────
+function toggleEncryption() {
+  const enc = document.getElementById('install-encryption').value === '1';
+  document.getElementById('enc-passphrase-group').style.display = enc ? 'block' : 'none';
+}
+
+function checkEncPass() {
+  const p  = document.getElementById('enc-pass').value;
+  const p2 = document.getElementById('enc-pass2').value;
+  const hint  = document.getElementById('enc-pass-hint');
+  const match = document.getElementById('enc-pass-match');
+  const ok = p.length >= 8;
+  hint.textContent  = ok ? '✓ Passphrase length OK' : 'Minimum 8 characters';
+  hint.className    = 'pass-hint ' + (ok ? 'ok' : 'fail');
+  if (p2) {
+    match.textContent = p === p2 ? '✓ Passphrases match' : '✗ Passphrases do not match';
+    match.className   = 'pass-hint ' + (p === p2 ? 'ok' : 'fail');
+  }
+}
+
 function checkPass() {
   const p  = document.getElementById('install-pass').value;
   const p2 = document.getElementById('install-pass2').value;
@@ -778,24 +819,31 @@ function startInstall() {
   const locale   = document.getElementById('install-locale').value || 'en_US.UTF-8';
   const role     = (document.querySelector('.target-card.selected') || {}).dataset?.role || 'desktop';
   const dhcp     = document.getElementById('net-dhcp').checked;
+  const encrypt  = document.getElementById('install-encryption').value === '1';
+  const encPass  = encrypt ? document.getElementById('enc-pass').value  : '';
+  const encPass2 = encrypt ? document.getElementById('enc-pass2').value : '';
   const err      = document.getElementById('install-err');
 
   const passOk = pass.length >= 8 && /[0-9]/.test(pass) && /[A-Z!@#$%^&*]/.test(pass);
 
   err.style.display = 'none';
-  if (!disk)          return showErr('Select a disk');
-  if (!host)          return showErr('Enter a hostname');
-  if (!user)          return showErr('Enter a username');
-  if (!pass)          return showErr('Enter a password');
-  if (!passOk)        return showErr('Password must be at least 8 chars, include a number and an uppercase letter or symbol');
-  if (pass !== pass2) return showErr('Passwords do not match');
+  if (!disk)               return showErr('Select a disk');
+  if (!host)               return showErr('Enter a hostname');
+  if (!user)               return showErr('Enter a username');
+  if (!pass)               return showErr('Enter a password');
+  if (!passOk)             return showErr('Password must be at least 8 chars, include a number and an uppercase letter or symbol');
+  if (pass !== pass2)      return showErr('Passwords do not match');
+  if (encrypt && encPass.length < 8)    return showErr('ZFS passphrase must be at least 8 characters');
+  if (encrypt && encPass !== encPass2)  return showErr('ZFS passphrases do not match');
 
   const params = {
     disk, hostname: host, username: user,
     password: pass, timezone, keyboard, locale, role,
     storage_mode: 'zfs', infra_mode: 'standalone',
+    zfs_encrypt: encrypt ? '1' : '0',
     network_dhcp: dhcp ? 'yes' : 'no',
   };
+  if (encrypt) params.zfs_passphrase = encPass;
   if (!dhcp) {
     const ip     = document.getElementById('net-ip').value.trim();
     const prefix = document.getElementById('net-prefix').value.trim() || '24';
@@ -813,7 +861,8 @@ function startInstall() {
   _installPayload = params;
   document.getElementById('confirm-detail').innerHTML =
     `<b>Disk:</b> ${disk}<br><b>Hostname:</b> ${host}<br><b>User:</b> ${user}<br>` +
-    `<b>Target:</b> ${role}<br><b>Network:</b> ${dhcp ? 'DHCP' : params.network_ip + '/' + params.network_prefix}<br>` +
+    `<b>Target:</b> ${role}<br><b>Encryption:</b> ${encrypt ? '🔒 AES-256-GCM (passphrase at boot)' : 'None'}<br>` +
+    `<b>Network:</b> ${dhcp ? 'DHCP' : params.network_ip + '/' + params.network_prefix}<br>` +
     `<b>Timezone:</b> ${timezone} &nbsp; <b>Keyboard:</b> ${keyboard}<br><br>` +
     `All data on <b>${disk}</b> will be erased. An initial snapshot will be taken after install. ` +
     `The system will power off when complete.`;
