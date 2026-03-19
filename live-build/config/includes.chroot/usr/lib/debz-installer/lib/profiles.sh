@@ -23,7 +23,6 @@ k_profile_packages() {
       echo "openssh-server sudo curl ca-certificates vim less iproute2 \
         salt-master salt-minion salt-api \
         wireguard-tools \
-        ansible \
         dnsmasq tftp-hpa \
         nginx \
         nftables chrony \

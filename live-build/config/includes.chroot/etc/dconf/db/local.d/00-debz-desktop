@@ -26,7 +26,7 @@ primary-color='#1a1f2b'
 
 # ── Shell ─────────────────────────────────────────────────────────────────────
 [org/gnome/shell]
-favorite-apps=['debz-webui.desktop','org.gnome.Terminal.desktop']
+favorite-apps=['firefox-esr.desktop','org.gnome.Terminal.desktop']
 enabled-extensions=@as []
 # Suppress the "welcome to GNOME" / first-run dialog
 welcome-dialog-last-shown-version='99.0.0'

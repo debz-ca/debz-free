@@ -126,8 +126,8 @@ guided_infra_prompt() {
     _hdr "7 of 7  ·  Deployment Mode"
     _info "This is debz Free — install as a standalone system."
     echo
-    _info "  ZFS on root, boot environments, Salt + Ansible single-node,"
-    _info "  dark GNOME desktop, offline installer — all included."
+    _info "  ZFS on root, boot environments, dark GNOME desktop,"
+    _info "  offline installer — all included."
     echo
     _info "  Upgrade to debz Pro for cluster management, WireGuard mesh,"
     _info "  golden image pipeline, multi-node fleet, and the full web UI."
@@ -277,7 +277,7 @@ guided_infra_prompt() {
   _ok "wg3" "${DEBZ_WG3_NET}  :${DEBZ_WG3_PORT}  (data)"
   echo
   _info "All cluster configuration is stored in the state database (state.db)."
-  _info "Keys, node roles, WireGuard addresses, and Ansible inventory are"
+  _info "Keys, node roles, and WireGuard addresses are"
   _info "generated and managed through the web UI after first boot."
   _info "Additional nodes are added via the Cluster Manager web UI — no pre-config needed."
 }
