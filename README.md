@@ -21,13 +21,10 @@ debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-ro
 
 | Target | What gets installed |
 |---|---|
-| **Desktop** | GNOME, GDM, NetworkManager, SSH |
-| **Server** | Base system, SSH, systemd-resolved |
-| **KVM Host** | QEMU/KVM, libvirt, containerd, Firecracker microVM runtime |
-| **Storage** | NFS, iSCSI (tgt), Samba, ZFS datasets |
-| **Monitoring** | Prometheus, Grafana, Alertmanager, node-exporter |
-| **Proxmox** | Base system + Proxmox VE repo configured for firstboot install |
-| **VDI** | Wayland, FFmpeg, pipewire, nginx |
+| **Desktop** | GNOME, GDM, NetworkManager, Firefox, SSH |
+| **Server** | Base system, SSH, systemd-resolved, common ops tools |
+
+KVM, Storage, Monitoring, Proxmox, and VDI targets are available in **debz Pro**. See [debz.ca](https://debz.ca).
 
 ---
 
