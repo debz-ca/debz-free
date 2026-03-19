@@ -1,6 +1,0 @@
----
-- name: restart kubelet
-  ansible.builtin.service:
-    name: kubelet
-    state: restarted
-

@@ -1,5 +1,0 @@
-- name: Kubernetes packages
-  hosts: control_plane:workers
-  become: true
-  roles:
-    - k8s_pkgs

@@ -1,6 +1,0 @@
----
-# Compatibility wrapper:
-# site.yml expects playbooks/03_containerd.yml, but the repo provides 02_containerd.yml.
-# Keep this file so older site.yml references continue to work.
-- import_playbook: 02_containerd.yml
-
