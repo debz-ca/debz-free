@@ -2,18 +2,20 @@
 
 **Debian 13 (trixie) · ZFS on root · ZFSBootMenu · Live installer**
 
-debz is a live bootable OS image that installs Debian 13 with ZFS on root as the default. Boot the ISO, open the browser-based installer, pick your target type, and you have a production-ready ZFS system in minutes — fully offline capable.
+debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — fully offline capable. Boot the ISO, open Firefox, navigate to `https://localhost:8080`, pick your target type, and go.
 
 ---
 
-## What it does
+## What you get
 
-- **Live ISO** boots to a GNOME desktop with a web-based installer at `https://<ip>:8080`
-- **ZFS on root** — pool layout with boot environments, snapshots, and automatic APT snapshot hooks baked in
-- **ZFSBootMenu** — UEFI bootloader with boot environment management
-- **Darksite** — full offline APT mirror baked into the ISO (~2500 packages, no internet required to install)
-- **7 install targets** — Desktop, Server, KVM Host, Storage, Monitoring, Proxmox, VDI
+- **GNOME live desktop** — boots straight to a desktop with Firefox pre-installed. Open `https://localhost:8080` to reach the installer.
+- **Browser-based installer** — dashboard, disk selector, install target picker, live progress log, ZFS snapshot management
+- **ZFS on root** — full dataset layout with boot environments, automatic APT snapshot hooks, and scheduled sanoid snapshots baked in
+- **ZFSBootMenu** — UEFI bootloader with boot environment management built in
+- **Darksite APT mirror** — ~2500 packages baked into the ISO. No internet required to install.
+- **ZFS encryption** — optional AES-256-GCM full-disk encryption with passphrase unlock via ZFSBootMenu
 - **Post-install snapshot** — `rpool@install-<timestamp>` taken automatically after every install for instant rollback
+- **Sanoid scheduled snapshots** — daily, weekly, monthly, yearly retention on all datasets from first boot
 
 ## Install targets
 
@@ -29,25 +31,37 @@ debz is a live bootable OS image that installs Debian 13 with ZFS on root as the
 
 ---
 
+## Using the installer
+
+1. Boot the ISO (UEFI, bare metal or VM)
+2. GNOME desktop loads automatically — open **Firefox**
+3. Navigate to **`https://localhost:8080`** (accept the self-signed cert)
+4. Fill in disk, hostname, username, target type, and click **Install**
+5. Watch the live log — system powers off when complete
+6. Boot the installed disk — ZFSBootMenu loads, then your system
+
+The installer also works headlessly over the network — navigate to `https://<ip>:8080` from any machine on the same network.
+
+---
+
 ## Building
 
-**Host requirements:** `docker` (or `podman`) and `git`. That's it. live-build, debootstrap, ZFS tools, and all build dependencies run inside the container — nothing else needs to be installed on your machine.
+**Requirements:** `docker` (or `podman`) and `git`. Everything else runs inside the container.
 
 ```bash
-# Clone
-git clone https://github.com/debz-ca/debz.git
-cd debz
+git clone https://github.com/debz-ca/debz-free.git
+cd debz-free
 
-# First time: build the builder container image (~5 min)
+# Build the builder container (~5 min, first time only)
 ./deploy.sh builder-image
 
-# Build the ISO (~20-40 min depending on network, darksite downloads ~2500 packages)
+# Build the ISO (~20-40 min)
 ./deploy.sh build-live
 
-# ISO lands at:
+# Find the ISO
 ./deploy.sh latest-iso
 
-# Or full clean rebuild in one step
+# Full clean rebuild in one step
 ./deploy.sh rebuild
 ```
 
@@ -60,7 +74,6 @@ Works on any Linux host with Docker or Podman. Tested on Debian, Ubuntu, Fedora.
 ./deploy.sh builder-image   # Build the Docker builder container
 ./deploy.sh rebuild         # clean + builder-image + build-live
 ./deploy.sh clean           # Remove local build state
-./deploy.sh deploy          # Upload ISO to Proxmox + create test VM
 ./deploy.sh latest-iso      # Print newest ISO path
 ```
 
@@ -88,7 +101,7 @@ rpool
     └── tmp                  ← /var/tmp
 ```
 
-Pool properties: `ashift=12`, `compression=lz4`, `autotrim=on`, `xattr=sa`, `acltype=posixacl`
+Pool properties: `ashift=12`, `compression=lz4`, `autotrim=on`, `xattr=sa`, `acltype=posixacl`, `dnodesize=auto`, `normalization=formD`
 
 ---
 
@@ -106,21 +119,21 @@ deploy.sh
 
 ## Web UI
 
-The installer runs at `https://<ip>:8080` on the live system.
+Served at `https://<ip>:8080` on the live system. Single port — HTTP static files and WebSocket on the same connection.
 
-- Dashboard — hostname, uptime, CPU, memory, NIC status, ZFS pool health
-- Install — target type selector, disk wipe, full installer with progress log
-- ZFS — pool status, snapshot management, boot environments
+- **Dashboard** — hostname, uptime, CPU, memory, NIC status
+- **Install** — target selector, disk wipe, encrypted or plain ZFS, live progress log
+- **ZFS** — pool status, snapshot list, snapshot create/rollback, boot environment management
 
-Backend: Python asyncio + websockets, single port (HTTP + WebSocket).
+Backend: Python asyncio + websockets. No framework dependencies beyond the standard library and `websockets`.
 
 ---
 
 ## License
 
-debz is released under the **BSD 3-Clause License**. See [LICENSE](LICENSE).
+BSD 3-Clause. See [LICENSE](LICENSE).
 
-Third-party components (Linux kernel, OpenZFS, GNOME, Docker, Kubernetes, etc.) retain their own licenses. Source for all GPL/AGPL components is available from their respective upstream projects — debz installs them unmodified from official APT repositories.
+Third-party components (Linux kernel, OpenZFS, GNOME, etc.) retain their own licenses. All GPL/AGPL components are installed unmodified from official Debian APT repositories — source available from `deb-src` entries.
 
 ---
 
