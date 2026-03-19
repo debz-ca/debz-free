@@ -193,6 +193,10 @@
               <div class="pass-hint" id="pass-match"></div>
             </div>
             <div class="form-group" style="margin-top:0.5rem">
+              <label>SSH public key <span style="color:var(--muted);font-weight:400">(optional — paste authorized_keys entry)</span></label>
+              <textarea id="install-ssh-key" rows="3" placeholder="ssh-ed25519 AAAA… user@host" style="font-family:monospace;font-size:0.78rem;resize:vertical;width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:0.4rem 0.5rem;outline:none"></textarea>
+            </div>
+            <div class="form-group" style="margin-top:0.5rem">
               <label>ZFS encryption</label>
               <select id="install-encryption" onchange="toggleEncryption()">
                 <option value="0">None — standard ZFS (recommended)</option>
@@ -378,6 +382,12 @@
               <label for="net-dhcp" style="cursor:pointer;font-size:0.9rem;margin:0">Use DHCP <span style="color:var(--muted)">(recommended)</span></label>
             </div>
             <div id="net-static" style="display:none">
+              <div class="form-group">
+                <label>Interface</label>
+                <select id="net-iface">
+                  <option value="">— detecting… —</option>
+                </select>
+              </div>
               <div class="net-row">
                 <div class="form-group">
                   <label>IP Address</label>
@@ -502,6 +512,7 @@ function connect() {
     requestDisks();
     refreshZFS();
     refreshSnapshots();
+    send({ action: 'install_state' });
   };
   ws.onclose = () => {
     wsReady = false;
@@ -550,12 +561,55 @@ function handle(msg) {
       break;
     }
 
+    case 'install_state': {
+      if (msg.running) {
+        // Install still running in background (page was refreshed mid-install)
+        document.getElementById('install-idle').style.display    = 'none';
+        document.getElementById('install-running').style.display = 'block';
+        document.getElementById('install-status').textContent    = 'Install in progress…';
+        // Switch to Install view so user can see it
+        document.querySelectorAll('#sidebar li').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+        const li = document.querySelector('#sidebar li[data-view="install"]');
+        if (li) li.classList.add('active');
+        document.getElementById('view-install').classList.add('active');
+      } else if (msg.rc !== null && msg.rc !== undefined) {
+        // Install finished — show result if user is on install view
+        const bar = document.getElementById('install-progress');
+        const st  = document.getElementById('install-status');
+        if (msg.rc === 0) {
+          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--accent)'; }
+          if (st)  st.textContent = '✓ Install complete — system powering off…';
+        } else {
+          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
+          if (st)  st.textContent = `✗ Install failed (exit ${msg.rc})`;
+        }
+      }
+      break;
+    }
+
     case 'network_info': {
       const ifaces = (msg.interfaces || []).filter(i => i.name !== 'lo');
       const primary = ifaces[0];
       if (primary) {
         document.getElementById('s-nic').textContent = primary.name + (primary.up ? ' ▲' : ' ▼');
         document.getElementById('s-ip').textContent  = primary.addr || '—';
+      }
+      // Populate NIC picker in install form
+      const nicSel = document.getElementById('net-iface');
+      if (nicSel) {
+        const prev = nicSel.value;
+        nicSel.innerHTML = '';
+        (msg.interfaces || []).forEach(ifc => {
+          if (ifc.name === 'lo') return;
+          const o = document.createElement('option');
+          o.value = ifc.name;
+          const addr = ifc.addr ? ` — ${ifc.addr}` : '';
+          const state = ifc.up ? '▲' : '▽';
+          o.textContent = `${state} ${ifc.name}${addr}`;
+          nicSel.appendChild(o);
+        });
+        if (prev) nicSel.value = prev;
       }
       break;
     }
@@ -570,7 +624,15 @@ function handle(msg) {
         disks.forEach(d => {
           const o = document.createElement('option');
           o.value = d.name;
-          o.textContent = `${d.name}  (${d.size || '?'})  ${d.model || ''}`.trim();
+          const tran = (d.tran || '').toLowerCase();
+          let dtype = 'Disk';
+          if (tran === 'nvme')        dtype = 'NVMe';
+          else if (tran === 'usb')    dtype = 'USB';
+          else if (d.rota === false || d.rota === 0) dtype = 'SSD';
+          else if (d.rota === true  || d.rota === 1) dtype = 'HDD';
+          else if (!tran)             dtype = 'Virtual';
+          const label = [d.name, d.size || '?', dtype, d.model].filter(Boolean).join('  ·  ');
+          o.textContent = label;
           sel.appendChild(o);
         });
         clearInterval(diskTimer);
@@ -769,6 +831,8 @@ function startInstall() {
   const locale   = document.getElementById('install-locale').value || 'en_US.UTF-8';
   const role     = (document.querySelector('.target-card.selected') || {}).dataset?.role || 'desktop';
   const dhcp     = document.getElementById('net-dhcp').checked;
+  const sshKey   = (document.getElementById('install-ssh-key')?.value || '').trim();
+  const netIface = document.getElementById('net-iface')?.value || '';
   const encrypt  = document.getElementById('install-encryption').value === '1';
   const encPass  = encrypt ? document.getElementById('enc-pass').value  : '';
   const encPass2 = encrypt ? document.getElementById('enc-pass2').value : '';
@@ -791,6 +855,8 @@ function startInstall() {
     password: pass, timezone, keyboard, locale, role,
     storage_mode: 'zfs', infra_mode: 'standalone',
     zfs_encrypt: encrypt ? '1' : '0',
+    ...(sshKey   ? { ssh_pubkey: sshKey }  : {}),
+    ...(netIface ? { net_iface: netIface } : {}),
     network_dhcp: dhcp ? 'yes' : 'no',
   };
   if (encrypt) params.zfs_passphrase = encPass;
@@ -823,6 +889,10 @@ function startInstall() {
 
 function confirmInstall() {
   document.getElementById('confirm-modal').classList.remove('open');
+  const diskLabel = document.getElementById('install-disk');
+  const diskText  = diskLabel?.options[diskLabel.selectedIndex]?.text || ((_installPayload || {}).disk || '');
+  if (!confirm(`⚠ This will permanently erase:\n\n  ${diskText}\n\nAll data will be lost. Continue with install?`)) return;
+
   document.getElementById('install-idle').style.display    = 'none';
   document.getElementById('install-running').style.display = 'block';
   document.getElementById('install-log').textContent = '';
@@ -852,6 +922,19 @@ function loadLog() {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Auto-detect browser timezone and pre-select in dropdown
+(function() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const sel = document.getElementById('install-timezone');
+    if (sel && tz) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === tz) { sel.selectedIndex = i; break; }
+      }
+    }
+  } catch(e) {}
+})();
 
 connect();
 </script>
