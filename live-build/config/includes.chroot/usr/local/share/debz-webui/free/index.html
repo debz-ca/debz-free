@@ -74,9 +74,6 @@
 
   <div class="nav-section">Tools</div>
   <ul>
-    <li data-view="ansible">
-      <span class="nav-icon">⚙</span> Ansible
-    </li>
     <li data-view="logs">
       <span class="nav-icon">≡</span> Logs
     </li>
@@ -453,38 +450,6 @@
       </div>
     </div>
 
-    <!-- ── Ansible ──────────────────────────────────────────────────────────── -->
-    <div class="view" id="view-ansible">
-      <div class="page-title">Ansible</div>
-      <div class="page-sub">Run playbooks on this node (standalone / masterless)</div>
-
-      <div class="panel">
-        <div class="panel-hdr">⚙ Run Playbook</div>
-        <div class="panel-body">
-          <div class="form-group">
-            <label>Playbook</label>
-            <select id="ansible-playbook">
-              <option value="/srv/ansible/playbooks/02_common.yml">02_common — baseline packages</option>
-              <option value="/srv/ansible/playbooks/03_containerd.yml">03_containerd — container runtime</option>
-              <option value="/srv/ansible/playbooks/04_k8s_packages.yml">04_k8s_packages — Kubernetes packages</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Extra vars (JSON)</label>
-            <input type="text" id="ansible-extra-vars" placeholder='{"key":"value"}'>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="runAnsible()">▶ Run</button>
-        </div>
-      </div>
-
-      <div class="panel" id="ansible-output-panel" style="display:none">
-        <div class="panel-hdr">≡ Output</div>
-        <div class="panel-body">
-          <div class="log-box" id="ansible-log" style="height:280px"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- ── Logs ─────────────────────────────────────────────────────────────── -->
     <div class="view" id="view-logs">
       <div class="page-title">Logs</div>
@@ -515,6 +480,14 @@ const wsUrl   = `${wsProto}://${location.host}`;
 let   ws      = null;
 let   wsReady = false;
 let   diskTimer = null;
+
+// Auto-refresh dashboard stats every 30 s
+setInterval(() => {
+  const dash = document.getElementById('view-dashboard');
+  if (dash && dash.classList.contains('active')) {
+    send({ action: 'system_info' });
+  }
+}, 30000);
 
 function connect() {
   ws = new WebSocket(wsUrl);
@@ -635,8 +608,7 @@ function handle(msg) {
     case 'log_line': {
       const target = msg.target || '';
       let boxId = null;
-      if (target === 'install')          boxId = 'install-log';
-      else if (target === 'ansible_log') boxId = 'ansible-log';
+      if (target === 'install') boxId = 'install-log';
       if (boxId) {
         const box = document.getElementById(boxId);
         if (box) { box.textContent += (msg.line || '') + '\n'; box.scrollTop = box.scrollHeight; }
@@ -680,13 +652,6 @@ function handle(msg) {
       break;
     }
 
-    case 'ansible_log': {
-      const box = document.getElementById('ansible-log');
-      box.textContent += (msg.line || '') + '\n';
-      box.scrollTop = box.scrollHeight;
-      break;
-    }
-
     case 'log_line': {
       const box = document.getElementById('log-box');
       box.textContent += (msg.line || '') + '\n';
@@ -706,6 +671,7 @@ document.querySelectorAll('#sidebar li[data-view]').forEach(li => {
     document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
     li.classList.add('active');
     document.getElementById('view-' + li.dataset.view).classList.add('active');
+    if (li.dataset.view === 'dashboard') { send({ action: 'system_info' }); refreshZFS(); refreshSnapshots(); }
     if (li.dataset.view === 'zfs')  { refreshZFS(); refreshSnapshots(); listBEs(); }
     if (li.dataset.view === 'logs') { loadLog(); }
     if (li.dataset.view === 'install') {
@@ -864,15 +830,6 @@ function wipeDisk() {
   document.getElementById('install-log').textContent = '';
   document.getElementById('install-status').textContent = `Wiping ${disk}…`;
   send({ action: 'wipe_disk', disk });
-}
-
-// ── Ansible ──────────────────────────────────────────────────────────────────
-function runAnsible() {
-  const pb    = document.getElementById('ansible-playbook').value;
-  const extra = document.getElementById('ansible-extra-vars').value.trim();
-  document.getElementById('ansible-output-panel').style.display = 'block';
-  document.getElementById('ansible-log').textContent = '';
-  send({ action: 'ansible_run', playbook: pb, extra_vars: extra || '{}' });
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────

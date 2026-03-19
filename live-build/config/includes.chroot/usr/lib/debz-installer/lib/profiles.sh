@@ -13,7 +13,15 @@ k_profile_packages() {
       echo "openssh-server sudo curl ca-certificates vim less network-manager wireguard-tools iproute2"
       ;;
     desktop)
-      echo "openssh-server sudo curl ca-certificates vim less network-manager task-gnome-desktop gdm3 wireguard-tools iproute2"
+      # task-gnome-desktop pulls gnome-core → gnome-snapshot → gstreamer1.0-plugins-bad
+      # → libfluidsynth3 → sf3-soundfont-gm which is not installable in trixie.
+      # Use curated GNOME package list that avoids gnome-snapshot entirely.
+      echo "openssh-server sudo curl ca-certificates vim less network-manager \
+        gnome-shell gnome-session gnome-control-center gnome-settings-daemon \
+        gdm3 nautilus gnome-terminal gnome-text-editor \
+        gnome-tweaks gnome-backgrounds adwaita-icon-theme fonts-cantarell \
+        gnome-system-monitor file-roller eog evince gvfs gvfs-backends \
+        wireguard-tools iproute2"
       ;;
 
     # ── debz templates ────────────────────────────────────────────────────────
