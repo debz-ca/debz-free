@@ -173,6 +173,7 @@ lb config \
     --bootappend-live "boot=live components username=live hostname=debz" \
     --iso-volume "Debz-${EDITION}-${BUILD_DATE}" \
     --image-name "debz-${EDITION}" \
+    --grub-timeout 5 \
     2>&1 | tee -a "$LOG_FILE"
 
 log "lb config complete."
