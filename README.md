@@ -188,6 +188,100 @@ At install time debz auto-detects the hypervisor and installs the appropriate gu
 
 ---
 
+## ZFS quick reference
+
+New to ZFS? Here are the commands you'll use day-to-day.
+
+### Pools and datasets
+
+```bash
+zpool list                          # show pools — size, used, health
+zpool status                        # detailed health, any errors
+zfs list                            # all datasets — used, available, mountpoint
+zfs list -r rpool/home              # recursive — dataset + all children
+```
+
+### Snapshots
+
+```bash
+# Take a snapshot
+zfs snapshot rpool/ROOT/<hostname>@before-upgrade
+zfs snapshot -r rpool@weekly-backup    # -r snapshots all child datasets too
+
+# List snapshots
+zfs list -t snapshot
+zfs list -t snapshot -r rpool/home     # snapshots of a specific dataset
+
+# See what changed since a snapshot
+zfs diff rpool/ROOT/<hostname>@before-upgrade
+
+# Roll back (destroys changes made after the snapshot)
+zfs rollback rpool/ROOT/<hostname>@before-upgrade
+
+# Destroy a snapshot you no longer need
+zfs destroy rpool/ROOT/<hostname>@before-upgrade
+```
+
+### Replication
+
+ZFS replication sends a full dataset — or just the changes since the last send — to another pool or host. This is the gold standard for backups and DR.
+
+```bash
+# Full initial send to a local pool
+zfs send rpool/home@snapshot1 | zfs receive backup/home
+
+# Incremental send (only changes between two snapshots)
+zfs send -i rpool/home@snapshot1 rpool/home@snapshot2 | zfs receive backup/home
+
+# Send to a remote host over SSH
+zfs send -R rpool/home@snapshot2 | ssh backup-host zfs receive backup/home
+
+# Compressed send (saves bandwidth)
+zfs send -c rpool/home@snapshot2 | ssh backup-host zfs receive backup/home
+
+# Resume an interrupted send
+zfs send -t <resume-token> | ssh backup-host zfs receive -s backup/home
+```
+
+### Dataset properties
+
+```bash
+# Check compression ratio
+zfs get compressratio rpool
+
+# Enable/change compression on a dataset
+zfs set compression=zstd rpool/srv/myapp
+
+# Check how much space snapshots are using
+zfs list -o name,used,usedbysnapshots -r rpool
+
+# Set quota on a dataset
+zfs set quota=100G rpool/home/alice
+
+# Set reservation (guaranteed space)
+zfs set reservation=10G rpool/srv/mydb
+```
+
+### Common recipes
+
+```bash
+# Create a dataset for a new user
+zfs create rpool/home/alice
+chown alice:alice /home/alice
+
+# Create a dataset for an application with its own snapshot schedule
+zfs create -o compression=zstd rpool/srv/myapp
+
+# Clone a dataset (instant copy-on-write — uses no extra space until data diverges)
+zfs snapshot rpool/srv/myapp@v1
+zfs clone rpool/srv/myapp@v1 rpool/srv/myapp-test
+
+# Factory reset — roll back to the post-install snapshot
+zfs rollback -r rpool@install-<timestamp>
+```
+
+---
+
 ## Architecture
 
 ```
