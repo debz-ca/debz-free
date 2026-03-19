@@ -2164,12 +2164,32 @@ cmd_publish() {
     log "  Object:  s3://${R2_BUCKET}/${dest}"
     log "  URL:     ${url}"
 
+    # Remove any previous debz-free-*.iso and *.sha256 objects from the bucket
+    log "Removing previous releases from bucket..."
+    local old_keys
+    old_keys="$(aws s3api list-objects-v2 \
+        --bucket "$R2_BUCKET" \
+        --endpoint-url "$R2_ENDPOINT" \
+        --query "Contents[?contains(Key, 'debz-${edition}-')].Key" \
+        --output text 2>/dev/null || true)"
+    if [[ -n "$old_keys" ]]; then
+        while IFS= read -r key; do
+            [[ -n "$key" ]] || continue
+            log "  deleting: $key"
+            aws s3 rm "s3://${R2_BUCKET}/${key}" \
+                --endpoint-url "$R2_ENDPOINT" 2>/dev/null || true
+        done <<< "$old_keys"
+    else
+        log "  (bucket already empty)"
+    fi
+
     # Generate sha256 alongside the ISO
     local sha_file="${iso}.sha256"
     (cd "$(dirname "$iso")" && sha256sum "$(basename "$iso")" > "$(basename "$sha_file")")
     log "  SHA256:  $(cat "$sha_file")"
 
     # Upload ISO
+    log "Uploading ISO..."
     aws s3 cp "$iso" "s3://${R2_BUCKET}/${dest}" \
         --endpoint-url "$R2_ENDPOINT" \
         --no-progress \
