@@ -48,6 +48,8 @@ The installer also works headlessly over the network — navigate to `https://<i
 
 **Requirements:** `docker` (or `podman`) and `git`. Everything else runs inside the container.
 
+**Requirements:** `docker` and `git`. Everything else runs inside the container.
+
 ```bash
 git clone https://github.com/debz-ca/debz-free.git
 cd debz-free
@@ -56,25 +58,25 @@ cd debz-free
 ./deploy.sh builder-image
 
 # Build the ISO (~20-40 min)
-./deploy.sh build-live
+./deploy.sh build
 
 # Find the ISO
 ./deploy.sh latest-iso
 
-# Full clean rebuild in one step
-./deploy.sh rebuild
+# Burn to USB
+USB_DEVICE=/dev/sdb ./deploy.sh burn
 ```
 
-Works on any Linux host with Docker or Podman. Tested on Debian, Ubuntu, Fedora.
+Works on any Linux host with Docker. Tested on Debian, Ubuntu, Fedora.
 
 ### Build commands
 
 ```bash
-./deploy.sh build-live      # Build ISO (requires builder image)
-./deploy.sh builder-image   # Build the Docker builder container
-./deploy.sh rebuild         # clean + builder-image + build-live
-./deploy.sh clean           # Remove local build state
-./deploy.sh latest-iso      # Print newest ISO path
+./deploy.sh builder-image   # Build the Docker builder container (do this first)
+./deploy.sh build           # Build the ISO
+./deploy.sh latest-iso      # Print path to the newest ISO
+./deploy.sh burn            # Write ISO to USB  (USB_DEVICE=/dev/sdX)
+./deploy.sh clean           # Remove build artifacts
 ```
 
 ---
@@ -102,6 +104,87 @@ rpool
 ```
 
 Pool properties: `ashift=12`, `compression=lz4`, `autotrim=on`, `xattr=sa`, `acltype=posixacl`, `dnodesize=auto`, `normalization=formD`
+
+---
+
+## What's baked into the installed system
+
+debz isn't just a Debian installer — every installed system gets a set of ZFS quality-of-life tools configured and ready from first boot.
+
+### Automatic snapshots
+
+**APT hooks** — a snapshot is taken automatically before and after every `apt install`, `apt upgrade`, or `apt remove`. Bad package update? Roll back in seconds.
+
+```bash
+# See all snapshots
+zfs list -t snapshot -r rpool
+
+# Roll back to before a package install
+zfs rollback rpool/ROOT/<hostname>@apt-pre-20260101-120000
+```
+
+**Sanoid scheduled snapshots** — runs as a systemd timer, no config needed:
+
+| Cadence | Kept | Covers |
+|---------|------|--------|
+| Daily   | 7    | 1 week |
+| Weekly  | 12   | 3 months |
+| Monthly | 12   | 1 year |
+| Yearly  | 1    | long-term anchor |
+
+Applied to: `/` (root), `/home`, `/var/lib`, `/srv`, `/root`
+
+**Post-install snapshot** — immediately after install completes, before first boot:
+```
+rpool@install-20260101T120000Z   ← instant factory reset point
+bpool@install-20260101T120000Z
+```
+
+### Snapshot management tools
+
+```bash
+snapshot-create.sh manual              # take a manual snapshot of root
+snapshot-create.sh manual rpool/home   # snapshot a specific dataset
+snapshot-policy.sh                     # report — counts vs limits for all groups
+snapshot-prune.sh rpool/ROOT/<h> apt-pre 10  # prune a specific group manually
+```
+
+### Boot environment management
+
+ZFSBootMenu is the bootloader. At boot, hold Space to access the boot environment menu — roll back to any previous boot environment without booting into the OS at all.
+
+From a running system:
+
+```bash
+debz-be list                           # list all boot environments and snapshots
+debz-be create pre-upgrade             # snapshot current root before a major change
+debz-be rollback rpool/ROOT/<h>@pre-upgrade  # roll back if something goes wrong
+debz-be activate rpool/ROOT/<h>@pre-upgrade  # set a snapshot as next boot target
+debz-be delete rpool/ROOT/<h>@old      # clean up old boot environments
+```
+
+### ZFS dataset layout
+
+Each major subtree is its own dataset — rolling back `/` doesn't affect `/home` or `/var/lib`. Service state survives OS rollbacks. Logs survive. Home directories survive.
+
+```bash
+# Add a dataset for a new user (survives OS rollbacks, independent snapshots)
+zfs create -o mountpoint=/home/alice rpool/home/alice
+chown alice:alice /home/alice
+
+# Add a workload dataset under /srv
+zfs create rpool/srv/myapp
+```
+
+### Hypervisor guest tools
+
+At install time debz auto-detects the hypervisor and installs the appropriate guest agent:
+
+| Hypervisor | Installed |
+|------------|-----------|
+| KVM / QEMU / Proxmox | `qemu-guest-agent` |
+| VMware / ESXi | `open-vm-tools` |
+| Xen | `xe-guest-utilities` |
 
 ---
 
