@@ -154,7 +154,7 @@ k_install_system_files() {
 
   # ── Systemd units ──────────────────────────────────────────────────────────
   mkdir -p "${target}/usr/lib/systemd/system"
-  for f in debz-srv-snapshot.service debz-srv-snapshot.timer debz-firstboot.service; do
+  for f in debz-srv-snapshot.service debz-srv-snapshot.timer debz-firstboot.service debz-webui.service; do
     [[ -f "/usr/lib/systemd/system/${f}" ]] && \
       cp "/usr/lib/systemd/system/${f}" "${target}/usr/lib/systemd/system/${f}"
   done
@@ -170,6 +170,18 @@ k_install_system_files() {
   mkdir -p "${target}/etc/systemd/system/multi-user.target.wants"
   ln -sf "/usr/lib/systemd/system/debz-firstboot.service" \
     "${target}/etc/systemd/system/multi-user.target.wants/debz-firstboot.service" || true
+  # debz-webui enabled at boot (firstboot also starts it, but enable here for robustness)
+  ln -sf "/usr/lib/systemd/system/debz-webui.service" \
+    "${target}/etc/systemd/system/multi-user.target.wants/debz-webui.service" || true
+
+  # ── Web UI binary ─────────────────────────────────────────────────────────
+  [[ -x /usr/local/bin/debz-webui ]] && \
+    cp /usr/local/bin/debz-webui "${target}/usr/local/bin/debz-webui" && \
+    chmod +x "${target}/usr/local/bin/debz-webui"
+
+  # ── Edition marker ────────────────────────────────────────────────────────
+  mkdir -p "${target}/etc/debz"
+  [[ -f /etc/debz/edition ]] && cp /etc/debz/edition "${target}/etc/debz/edition"
 
   # ── User tools: mdir (ZFS dataset creator) + adduser.local hook ────────────
   mkdir -p "${target}/usr/local/bin" "${target}/usr/local/sbin"
