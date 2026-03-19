@@ -10,7 +10,7 @@ debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-ro
 
 - **GNOME live desktop** — boots straight to a desktop with the installer UI ready to go
 - **Browser-based installer** — disk selector, target picker, live progress log
-- **ZFS on root** — full dataset layout with boot environments baked in
+- **ZFS on root** — single-vdev pool with full dataset layout and boot environments baked in (mirror/RAIDZ arrays available in Pro)
 - **ZFSBootMenu** — UEFI bootloader with boot environment management built in
 - **Offline installer** — all packages baked into the ISO, no internet required
 - **ZFS encryption** — optional AES-256-GCM full-disk encryption with passphrase unlock at boot
