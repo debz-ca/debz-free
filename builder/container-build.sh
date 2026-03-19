@@ -10,7 +10,7 @@ PROFILE="${PROFILE:-desktop}"
 EDITION="${EDITION:-free}"
 ARCH="${ARCH:-amd64}"
 BUILDER_IMAGE="${BUILDER_IMAGE:-debz-live-builder:latest}"
-BUILDER_CONTAINER="${BUILDER_CONTAINER:-debz-iso-build-$$}"
+BUILDER_CONTAINER="${BUILDER_CONTAINER:-debz-free-build-$$}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/live-build/output}"
 LOG_DIR="${LOG_DIR:-$ROOT/live-build/logs}"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
@@ -27,6 +27,26 @@ die() {
     printf '[%s] [container-build] ERROR: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
     exit 1
 }
+
+# ---------------------------------------------------------------------------
+# On exit (success or failure): copy latest lb log to /home/todd/logs/
+# ---------------------------------------------------------------------------
+_copy_log_on_exit() {
+    local exit_code=$?
+    local todd_log_dir="${TODD_LOG_DIR:-/home/todd/logs}"
+    if [[ -d "$todd_log_dir" ]]; then
+        local latest
+        latest="$(find "${LOG_DIR:-/tmp}" -name "build-${PROFILE:-desktop}-${ARCH:-amd64}-*.log" \
+                  2>/dev/null | sort | tail -1 || true)"
+        if [[ -n "$latest" ]] && [[ -f "$latest" ]]; then
+            local dest_name="${EDITION:-free}-$(basename "$latest")"
+            cp "$latest" "${todd_log_dir}/${dest_name}" 2>/dev/null || true
+            ln -sf "${todd_log_dir}/${dest_name}" "${todd_log_dir}/${EDITION:-free}-lb-build-latest.log" 2>/dev/null || true
+        fi
+    fi
+    return $exit_code
+}
+trap _copy_log_on_exit EXIT
 
 # ---------------------------------------------------------------------------
 # Detect container runtime
@@ -131,8 +151,8 @@ if [[ -d "$TODD_LOG_DIR" ]]; then
                      | sort | tail -1 || true)"
     if [[ -n "$LATEST_LB_LOG" ]] && [[ -f "$LATEST_LB_LOG" ]]; then
         cp "$LATEST_LB_LOG" "${TODD_LOG_DIR}/$(basename "$LATEST_LB_LOG")"
-        ln -sf "${TODD_LOG_DIR}/$(basename "$LATEST_LB_LOG")" "${TODD_LOG_DIR}/lb-build-latest.log"
-        log "lb build transcript copied to: ${TODD_LOG_DIR}/lb-build-latest.log"
+        ln -sf "${TODD_LOG_DIR}/$(basename "$LATEST_LB_LOG")" "${TODD_LOG_DIR}/${EDITION}-lb-build-latest.log"
+        log "lb build transcript copied to: ${TODD_LOG_DIR}/${EDITION}-lb-build-latest.log"
     fi
 fi
 

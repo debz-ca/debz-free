@@ -28,3 +28,4 @@ logs/
 *.swp
 *~
 html/
+debz.env

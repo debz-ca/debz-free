@@ -15,7 +15,7 @@ PROFILE="${PROFILE:-desktop}"
 EDITION="free"
 ARCH="${ARCH:-amd64}"
 BUILDER_IMAGE="${BUILDER_IMAGE:-debz-live-builder:latest}"
-BUILDER_CONTAINER="${BUILDER_CONTAINER:-debz-iso-build-$$}"
+BUILDER_CONTAINER="${BUILDER_CONTAINER:-debz-free-build-$$}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/live-build/output}"
 LOG_DIR="${LOG_DIR:-$ROOT/live-build/logs}"
 
@@ -30,6 +30,7 @@ _DEBZ_RUN_LOG="${TODD_LOG_DIR}/deploy-$(date +%Y%m%d-%H%M%S)-${1:-run}.log"
 # Start tee before any output so the very first log() line is captured
 exec > >(tee -a "$_DEBZ_RUN_LOG") 2>&1
 ln -sf "$_DEBZ_RUN_LOG" "${TODD_LOG_DIR}/latest.log"
+ln -sf "$_DEBZ_RUN_LOG" "${TODD_LOG_DIR}/latest-${EDITION}.log"
 
 # ---------------------------------------------------------------------------
 # Proxmox / VM configuration
@@ -43,8 +44,8 @@ PROXMOX_ISO_STORE="${PROXMOX_ISO_STORE:-local}"        # Proxmox storage for ISO
 PROXMOX_VM_STORE="${PROXMOX_VM_STORE:-local-zfs}"      # Proxmox storage for VM boot disk
 PROXMOX_DATA_STORE="${PROXMOX_DATA_STORE:-fireball}"   # Proxmox storage for extra data disks (fireball zpool)
 
-VMID="${VMID:-900}"
-VM_NAME="${VM_NAME:-debz-live}"
+VMID="${VMID:-901}"
+VM_NAME="${VM_NAME:-debz-free}"
 VM_MEMORY="${VM_MEMORY:-4096}"
 VM_CORES="${VM_CORES:-4}"
 VM_DISK_GB="${VM_DISK_GB:-40}"
@@ -521,8 +522,7 @@ cmd_clean() {
     # Kill any lingering builder containers
     local containers
     containers=$("$runtime" ps -a \
-        --filter "name=debz-live-builder" \
-        --filter "name=debz-iso-build" \
+        --filter "name=debz-free-build" \
         --filter "name=debz-resume" \
         -q 2>/dev/null || true)
     if [[ -n "$containers" ]]; then
@@ -2689,7 +2689,7 @@ ENVIRONMENT VARIABLES  —  all variables with defaults
     OUTPUT_DIR          ISO output directory         default: live-build/output
     LOG_DIR             build log directory          default: live-build/logs
     BUILDER_IMAGE       builder Docker image tag     default: debz-live-builder:latest
-    BUILDER_CONTAINER   ephemeral container name     default: debz-iso-build-<PID>
+    BUILDER_CONTAINER   ephemeral container name     default: debz-free-build-<PID>
 
   PROXMOX
     PROXMOX_HOST          IP or FQDN                  default: 10.100.10.225
