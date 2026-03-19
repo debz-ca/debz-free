@@ -180,13 +180,36 @@ k_install_system_files() {
     cp /usr/local/sbin/adduser.local "${target}/usr/local/sbin/adduser.local" && \
     chmod +x "${target}/usr/local/sbin/adduser.local"
 
-  # ── GNOME dconf system settings (dock, theme, defaults) ─────────────────────
-  if [[ -d /etc/dconf/db/local.d ]]; then
-    mkdir -p "${target}/etc/dconf/db/local.d"
-    cp /etc/dconf/db/local.d/00-debz-desktop "${target}/etc/dconf/db/local.d/00-debz-desktop" 2>/dev/null || true
-    mkdir -p "${target}/etc/dconf/profile"
-    cp /etc/dconf/profile/user "${target}/etc/dconf/profile/user" 2>/dev/null || true
+  # ── OS branding ───────────────────────────────────────────────────────────────
+  [[ -f /etc/os-release ]] && cp /etc/os-release "${target}/etc/os-release"
+
+  # ── GNOME dconf system settings (dock, theme, terminal defaults) ──────────────
+  mkdir -p "${target}/etc/dconf/db/local.d" "${target}/etc/dconf/profile"
+  for _f in 00-debz-desktop 01-debz-terminal-default; do
+    [[ -f "/etc/dconf/db/local.d/${_f}" ]] && \
+      cp "/etc/dconf/db/local.d/${_f}" "${target}/etc/dconf/db/local.d/${_f}"
+  done
+  [[ -f /etc/dconf/profile/user ]] && cp /etc/dconf/profile/user "${target}/etc/dconf/profile/user"
+
+  # ── GDM login screen (dconf db + profile + config) ────────────────────────────
+  if [[ -d /etc/dconf/db/gdm.d ]]; then
+    mkdir -p "${target}/etc/dconf/db/gdm.d"
+    cp /etc/dconf/db/gdm.d/00-debz-login "${target}/etc/dconf/db/gdm.d/00-debz-login" 2>/dev/null || true
+    [[ -f /etc/dconf/profile/gdm ]] && cp /etc/dconf/profile/gdm "${target}/etc/dconf/profile/gdm"
   fi
+  # GDM config: no auto-login on installed system (live has AutomaticLogin=live)
+  mkdir -p "${target}/etc/gdm3"
+  cat > "${target}/etc/gdm3/daemon.conf" <<'EOGDM'
+[daemon]
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+EOGDM
 
   # ── Custom .desktop launchers (vim, debz-webui) ──────────────────────────────
   if [[ -d /usr/share/applications ]]; then

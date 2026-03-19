@@ -4,8 +4,8 @@ banner-message-text='debz'
 disable-user-list=false
 
 [org/gnome/desktop/background]
-picture-uri='file:///home/live/Pictures/debz-bg.jpg'
-picture-uri-dark='file:///home/live/Pictures/debz-bg.jpg'
+picture-uri='file:///usr/share/backgrounds/debz/default.png'
+picture-uri-dark='file:///usr/share/backgrounds/debz/default.png'
 picture-options='zoom'
 primary-color='#1a1f2b'
 secondary-color='#1a1f2b'
