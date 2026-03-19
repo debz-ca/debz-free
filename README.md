@@ -1,6 +1,6 @@
 # debz — free edition
 
-**Debian 13 (trixie) · ZFS on root · ZFSBootMenu · Live installer**
+**[debz.ca](https://debz.ca) · Debian 13 (trixie) · ZFS on root · ZFSBootMenu · Live installer**
 
 debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — fully offline capable. Boot the ISO, pick your target type in the browser-based installer, and go.
 
