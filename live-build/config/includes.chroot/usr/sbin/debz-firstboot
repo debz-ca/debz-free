@@ -734,6 +734,10 @@ SALT
       ok "Salt configured for standalone/masterless mode"
     fi
 
+    # Suppress GNOME Terminal "set as default terminal" nag
+    update-alternatives --set x-terminal-emulator /usr/bin/gnome-terminal.wrapper \
+      2>/dev/null || true
+
     # Enable web UI (free version)
     systemctl enable debz-webui 2>/dev/null || true
     systemctl start  debz-webui 2>/dev/null || true

@@ -17,12 +17,13 @@ k_profile_packages() {
       # → libfluidsynth3 → sf3-soundfont-gm which is not in the darksite (soundfonts
       # are blacklisted). Install individual packages that avoid gnome-snapshot entirely.
       # Only packages confirmed present in the darksite pool are listed here.
-      # loupe = GNOME image viewer (replaces eog in trixie).
+      # loupe = GNOME image viewer (replaces eog in trixie). firefox-esr confirmed in darksite pool.
       echo "openssh-server sudo curl ca-certificates vim less network-manager \
         gnome-shell gnome-session gnome-control-center gnome-settings-daemon \
-        gdm3 nautilus gnome-terminal gnome-text-editor loupe \
+        gdm3 nautilus gnome-terminal loupe \
         adwaita-icon-theme fonts-cantarell gvfs gvfs-backends \
-        wireguard-tools iproute2"
+        firefox-esr \
+        tmux wireguard-tools iproute2"
       ;;
 
     # ── debz templates ────────────────────────────────────────────────────────
@@ -186,6 +187,26 @@ k_install_system_files() {
     mkdir -p "${target}/etc/dconf/profile"
     cp /etc/dconf/profile/user "${target}/etc/dconf/profile/user" 2>/dev/null || true
   fi
+
+  # ── Custom .desktop launchers (vim, debz-webui) ──────────────────────────────
+  if [[ -d /usr/share/applications ]]; then
+    mkdir -p "${target}/usr/share/applications"
+    for f in /usr/share/applications/vim.desktop /usr/share/applications/debz-webui.desktop; do
+      [[ -f "$f" ]] && cp "$f" "${target}/usr/share/applications/$(basename "$f")"
+    done
+  fi
+
+  # ── Wallpaper ─────────────────────────────────────────────────────────────
+  if [[ -d /usr/share/backgrounds/debz ]]; then
+    mkdir -p "${target}/usr/share/backgrounds/debz"
+    cp -r /usr/share/backgrounds/debz/. "${target}/usr/share/backgrounds/debz/"
+  fi
+
+  # ── Shell dotfiles (.bashrc, .tmux.conf, .vimrc) for root and skel ──────────
+  for _f in .bashrc .tmux.conf .vimrc; do
+    [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/etc/skel/${_f}"
+    [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/root/${_f}"
+  done
 
   # ── Backend runtime tools (debz-be, debz-recovery, debz-upgrade) ───────────
   if [[ -d /usr/lib/debz-installer/backend ]]; then
