@@ -83,7 +83,6 @@
 <!-- ── Main ───────────────────────────────────────────────────────────────── -->
 <div id="main">
   <div id="topbar">
-    <span class="tb-title" id="tb-hostname">debz</span>
     <span id="status-dot"></span>
     <span id="status-text">connecting…</span>
   </div>
@@ -556,7 +555,7 @@ function handle(msg) {
       document.getElementById('s-cpus').textContent      = d.cpus     || '—';
       document.getElementById('s-mem').textContent       = d.memory_total || '—';
       document.getElementById('s-mem-free').textContent  = 'free: ' + (d.memory_free || '—');
-      document.getElementById('tb-hostname').textContent = d.hostname || 'debz';
+      document.title = (d.hostname || 'debz') + ' — debz';
       document.title = (d.hostname || 'debz') + ' — debz';
       break;
     }

@@ -22,7 +22,10 @@ k_poweroff_after_success() {
   fi
   k_log "Install completed successfully; ejecting media and powering off"
   sync || true
-  eject 2>/dev/null || true
+  # Eject all optical drives so machine boots from disk on next start
+  for _dev in /dev/sr0 /dev/sr1 /dev/cdrom /dev/dvd; do
+    [[ -b "$_dev" ]] && eject "$_dev" 2>/dev/null || true
+  done
 
   echo
   printf '\e[1;32m╔══════════════════════════════════════════════════════════╗\e[0m\n'
