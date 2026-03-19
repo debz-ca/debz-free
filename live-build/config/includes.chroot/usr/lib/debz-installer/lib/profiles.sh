@@ -211,13 +211,10 @@ k_install_system_files() {
 [debug]
 EOGDM
 
-  # ── Custom .desktop launchers (vim, debz-webui) ──────────────────────────────
-  if [[ -d /usr/share/applications ]]; then
-    mkdir -p "${target}/usr/share/applications"
-    for f in /usr/share/applications/vim.desktop /usr/share/applications/debz-webui.desktop; do
-      [[ -f "$f" ]] && cp "$f" "${target}/usr/share/applications/$(basename "$f")"
-    done
-  fi
+  # ── Custom .desktop launchers — vim only (debz-webui is live-only) ───────────
+  mkdir -p "${target}/usr/share/applications"
+  [[ -f /usr/share/applications/vim.desktop ]] && \
+    cp /usr/share/applications/vim.desktop "${target}/usr/share/applications/vim.desktop"
 
   # ── Wallpaper ─────────────────────────────────────────────────────────────
   if [[ -d /usr/share/backgrounds/debz ]]; then

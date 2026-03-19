@@ -735,8 +735,13 @@ SALT
     fi
 
     # Suppress GNOME Terminal "set as default terminal" nag
-    update-alternatives --set x-terminal-emulator /usr/bin/gnome-terminal.wrapper \
-      2>/dev/null || true
+    # Find whatever path gnome-terminal registered with update-alternatives
+    _gt_alt="$(update-alternatives --list x-terminal-emulator 2>/dev/null \
+      | grep -i gnome-terminal | head -1 || true)"
+    if [[ -n "$_gt_alt" ]]; then
+      update-alternatives --set x-terminal-emulator "$_gt_alt" 2>/dev/null || true
+    fi
+    unset _gt_alt
 
     # Enable web UI (free version)
     systemctl enable debz-webui 2>/dev/null || true
