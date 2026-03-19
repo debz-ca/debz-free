@@ -222,15 +222,30 @@ EOGDM
     cp -r /usr/share/backgrounds/debz/. "${target}/usr/share/backgrounds/debz/"
   fi
 
-  # ── Shell dotfiles (.bashrc, .tmux.conf, .vimrc) for root and skel ──────────
+  # ── Shell dotfiles (.bashrc, .tmux.conf, .vimrc) for root, skel, and admin user
+  # k_create_users runs before k_install_system_files so useradd copies from skel
+  # before these files exist — explicitly push them to the admin home dir too.
+  local _user="${DEBZ_USERNAME:-admin}"
+  local _user_home="${target}/home/${_user}"
   for _f in .bashrc .tmux.conf .vimrc; do
-    [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/etc/skel/${_f}"
-    [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/root/${_f}"
+    [[ -f "/etc/skel/${_f}" ]] || continue
+    cp "/etc/skel/${_f}" "${target}/etc/skel/${_f}"
+    cp "/etc/skel/${_f}" "${target}/root/${_f}"
+    [[ -d "$_user_home" ]] && cp "/etc/skel/${_f}" "${_user_home}/${_f}"
   done
   # vim colorscheme
   if [[ -d /etc/skel/.vim ]]; then
     cp -r /etc/skel/.vim "${target}/etc/skel/.vim"
     cp -r /etc/skel/.vim "${target}/root/.vim"
+    [[ -d "$_user_home" ]] && cp -r /etc/skel/.vim "${_user_home}/.vim"
+  fi
+  # Fix ownership of admin home dotfiles
+  if [[ -d "$_user_home" ]]; then
+    local _uid _gid
+    _uid="$(chroot "${target}" id -u "${_user}" 2>/dev/null || echo '')"
+    _gid="$(chroot "${target}" id -g "${_user}" 2>/dev/null || echo '')"
+    [[ -n "$_uid" && -n "$_gid" ]] && \
+      chown -R "${_uid}:${_gid}" "${_user_home}/" 2>/dev/null || true
   fi
 
   # ── Performance tuning (sysctl, ZFS ARC, I/O scheduler) ─────────────────────
