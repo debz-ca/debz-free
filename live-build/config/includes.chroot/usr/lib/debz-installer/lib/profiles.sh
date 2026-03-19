@@ -174,10 +174,15 @@ k_install_system_files() {
   ln -sf "/usr/lib/systemd/system/debz-webui.service" \
     "${target}/etc/systemd/system/multi-user.target.wants/debz-webui.service" || true
 
-  # ── Web UI binary ─────────────────────────────────────────────────────────
+  # ── Web UI binary + static files ──────────────────────────────────────────
   [[ -x /usr/local/bin/debz-webui ]] && \
     cp /usr/local/bin/debz-webui "${target}/usr/local/bin/debz-webui" && \
     chmod +x "${target}/usr/local/bin/debz-webui"
+  # The service WorkingDirectory is /usr/local/share/debz-webui — copy static files
+  if [[ -d /usr/local/share/debz-webui/active ]]; then
+    mkdir -p "${target}/usr/local/share/debz-webui"
+    cp -r /usr/local/share/debz-webui/active/. "${target}/usr/local/share/debz-webui/"
+  fi
 
   # ── Edition marker ────────────────────────────────────────────────────────
   mkdir -p "${target}/etc/debz"
