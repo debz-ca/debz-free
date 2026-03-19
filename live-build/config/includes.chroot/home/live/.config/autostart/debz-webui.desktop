@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=debz Web UI
-Exec=bash -c 'systemctl start debz-webui 2>/dev/null; for i in $(seq 1 30); do nc -z localhost 8080 2>/dev/null && break; sleep 1; done; scheme=https; curl -sk https://localhost:8080/ -o /dev/null 2>/dev/null || scheme=http; firefox-esr --profile /home/live/.mozilla/firefox/debz.default ${scheme}://localhost:8080 https://debz.ca'
+Exec=bash -c 'systemctl start debz-webui 2>/dev/null; for i in $(seq 1 30); do (echo >/dev/tcp/localhost/8080) 2>/dev/null && break; sleep 1; done; firefox-esr --profile /home/live/.mozilla/firefox/debz.default http://localhost:8080 https://debz.ca'
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=4
