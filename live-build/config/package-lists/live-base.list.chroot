@@ -49,6 +49,7 @@ qemu-guest-agent
 
 # Filesystems / storage helpers
 btrfs-progs
+eject
 
 # UI/runtime dependencies
 dbus
