@@ -2,13 +2,13 @@
 
 **Debian 13 (trixie) · ZFS on root · ZFSBootMenu · Live installer**
 
-debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — fully offline capable. Boot the ISO, open Firefox, navigate to `https://localhost:8080`, pick your target type, and go.
+debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — fully offline capable. Boot the ISO, pick your target type in the browser-based installer, and go.
 
 ---
 
 ## What you get
 
-- **GNOME live desktop** — boots straight to a desktop with Firefox pre-installed. Open `https://localhost:8080` to reach the installer.
+- **GNOME live desktop** — boots straight to a desktop with Firefox and the installer UI ready to go
 - **Browser-based installer** — dashboard, disk selector, install target picker, live progress log, ZFS snapshot management
 - **ZFS on root** — full dataset layout with boot environments, automatic APT snapshot hooks, and scheduled sanoid snapshots baked in
 - **ZFSBootMenu** — UEFI bootloader with boot environment management built in
@@ -34,13 +34,12 @@ debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-ro
 ## Using the installer
 
 1. Boot the ISO (UEFI, bare metal or VM)
-2. GNOME desktop loads automatically — open **Firefox**
-3. Navigate to **`https://localhost:8080`** (accept the self-signed cert)
-4. Fill in disk, hostname, username, target type, and click **Install**
-5. Watch the live log — system powers off when complete
-6. Boot the installed disk — ZFSBootMenu loads, then your system
+2. GNOME desktop loads — the installer opens automatically in Firefox
+3. Fill in disk, hostname, username, target type, and click **Install**
+4. Watch the live log — system powers off when complete
+5. Boot the installed disk — ZFSBootMenu loads, then your system
 
-The installer also works headlessly over the network — navigate to `https://<ip>:8080` from any machine on the same network.
+The installer is also reachable over the network at `https://<ip>:8080` from any machine on the same network.
 
 ---
 
