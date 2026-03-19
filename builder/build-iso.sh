@@ -172,7 +172,7 @@ lb config \
     --linux-flavours "$LB_LINUX_FLAVOUR" \
     --bootappend-live "boot=live components username=live hostname=debz" \
     --iso-volume "Debz-${EDITION}-${BUILD_DATE}" \
-    --image-name "debz-${EDITION}-${ARCH}" \
+    --image-name "debz-${EDITION}" \
     2>&1 | tee -a "$LOG_FILE"
 
 log "lb config complete."
