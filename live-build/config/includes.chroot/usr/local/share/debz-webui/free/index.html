@@ -158,6 +158,9 @@
                 <div class="tc-sub">Headless + SSH</div>
               </div>
             </div>
+            <div id="role-summary" style="margin-top:0.6rem;font-size:0.8rem;color:var(--accent)">
+              ✓ Desktop selected — GNOME workstation + ZFS on root
+            </div>
           </div>
         </div>
 
@@ -682,9 +685,15 @@ document.querySelectorAll('#sidebar li[data-view]').forEach(li => {
 });
 
 // ── Target type selection ────────────────────────────────────────────────────
+const ROLE_DESCS = {
+  desktop: 'Desktop selected — GNOME workstation + ZFS on root',
+  server:  'Server selected — headless SSH node + ZFS on root',
+};
 function selectTarget(el) {
   document.querySelectorAll('.target-card').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
+  const sum = document.getElementById('role-summary');
+  if (sum) sum.textContent = '✓ ' + (ROLE_DESCS[el.dataset.role] || el.dataset.role);
 }
 
 // ── DHCP toggle ──────────────────────────────────────────────────────────────
