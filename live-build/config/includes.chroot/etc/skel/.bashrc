@@ -43,6 +43,7 @@ bpoff() { bind 'set enable-bracketed-paste off' 2>/dev/null || true; }
 bpon()  { bind 'set enable-bracketed-paste on'  2>/dev/null || true; }
 
 # ── Core aliases ──────────────────────────────────────────────────────────────
+alias tk='tmux kill-server'
 alias ls='ls --color=auto'
 alias ll='ls -alFh --color=auto'
 alias la='ls -A --color=auto'
