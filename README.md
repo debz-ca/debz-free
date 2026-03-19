@@ -2,20 +2,20 @@
 
 **[debz.ca](https://debz.ca) · Debian 13 (trixie) · ZFS on root · ZFSBootMenu · Live installer**
 
-debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — fully offline capable. Boot the ISO, pick your target type in the browser-based installer, and go.
+debz is a live bootable Debian 13 ISO that installs a production-ready ZFS-on-root system in minutes — no internet required. Boot the ISO, pick your target type in the browser-based installer, and go.
 
 ---
 
 ## What you get
 
-- **GNOME live desktop** — boots straight to a desktop with Firefox and the installer UI ready to go
-- **Browser-based installer** — dashboard, disk selector, install target picker, live progress log, ZFS snapshot management
-- **ZFS on root** — full dataset layout with boot environments, automatic APT snapshot hooks, and scheduled sanoid snapshots baked in
+- **GNOME live desktop** — boots straight to a desktop with the installer UI ready to go
+- **Browser-based installer** — disk selector, target picker, live progress log
+- **ZFS on root** — full dataset layout with boot environments baked in
 - **ZFSBootMenu** — UEFI bootloader with boot environment management built in
-- **Darksite APT mirror** — ~2500 packages baked into the ISO. No internet required to install.
-- **ZFS encryption** — optional AES-256-GCM full-disk encryption with passphrase unlock via ZFSBootMenu
-- **Post-install snapshot** — `rpool@install-<timestamp>` taken automatically after every install for instant rollback
-- **Sanoid scheduled snapshots** — daily, weekly, monthly, yearly retention on all datasets from first boot
+- **Offline installer** — all packages baked into the ISO, no internet required
+- **ZFS encryption** — optional AES-256-GCM full-disk encryption with passphrase unlock at boot
+- **Automatic snapshots** — taken before/after every package change, and on a daily/weekly/monthly/yearly schedule from first boot
+- **Post-install snapshot** — instant rollback point created automatically after every install
 
 ## Install targets
 
@@ -41,8 +41,6 @@ The installer is also reachable over the network at `https://<ip>:8080` from any
 ---
 
 ## Building
-
-**Requirements:** `docker` (or `podman`) and `git`. Everything else runs inside the container.
 
 **Requirements:** `docker` and `git`. Everything else runs inside the container.
 
@@ -105,11 +103,11 @@ Pool properties: `ashift=12`, `compression=lz4`, `autotrim=on`, `xattr=sa`, `acl
 
 ## What's baked into the installed system
 
-debz isn't just a Debian installer — every installed system gets a set of ZFS quality-of-life tools configured and ready from first boot.
+debz isn't just an installer — every system gets a set of quality-of-life improvements configured and ready from first boot.
 
 ### Automatic snapshots
 
-**APT hooks** — a snapshot is taken automatically before and after every `apt install`, `apt upgrade`, or `apt remove`. Bad package update? Roll back in seconds.
+**Before and after every package change** — a snapshot is taken automatically before and after every `apt install`, `apt upgrade`, or `apt remove`. Bad update? Roll back in seconds.
 
 ```bash
 # See all snapshots
@@ -119,7 +117,7 @@ zfs list -t snapshot -r rpool
 zfs rollback rpool/ROOT/<hostname>@apt-pre-20260101-120000
 ```
 
-**Sanoid scheduled snapshots** — runs as a systemd timer, no config needed:
+**Scheduled snapshots** — no config needed, running from first boot:
 
 | Cadence | Kept | Covers |
 |---------|------|--------|
