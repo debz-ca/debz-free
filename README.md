@@ -147,6 +147,64 @@ At install time debz auto-detects the hypervisor and installs the appropriate gu
 
 ---
 
+## ZFS and RAM — what's actually going on
+
+If you're new to ZFS, `free -h` after boot will show most of your RAM as "used" and you'll wonder if something is wrong. Nothing is wrong — that's ZFS doing its job.
+
+### The ARC (Adaptive Replacement Cache)
+
+ZFS uses free RAM as a read cache called the ARC. The more RAM it has, the more data it can serve from memory instead of disk. This is intentional and a core part of how ZFS performs.
+
+**The key thing to understand:** ARC memory is immediately released to applications that need it. It's not locked, it's not a leak — it's just free RAM being put to work. When an application asks for memory, the ARC shrinks to make room automatically.
+
+```bash
+# See actual ARC usage
+arc_summary        # full ARC stats
+cat /proc/spl/kstat/zfs/arcstats | grep -E "^size|^c |^hits|^misses"
+
+# Quick view — ARC size vs limit
+zpool get all | grep cache
+```
+
+### How much RAM does ZFS need?
+
+ZFS runs on systems with as little as 2GB RAM, but the sweet spot for a desktop or light server is **4GB+**. More RAM = bigger ARC = faster reads, especially for datasets that get accessed repeatedly.
+
+| RAM   | ARC behaviour |
+|-------|--------------|
+| 2 GB  | ARC limited to ~1 GB, tight but functional |
+| 4 GB  | Comfortable for desktop + server workloads |
+| 8 GB+ | ARC has room to cache heavily-accessed data |
+
+### Tuning the ARC limit
+
+If you want to cap how much RAM ZFS can use — for example on a shared host — set a limit in `/etc/modprobe.d/zfs.conf`:
+
+```bash
+# Cap ARC at 4 GB (value in bytes)
+echo "options zfs zfs_arc_max=4294967296" > /etc/modprobe.d/zfs.conf
+update-initramfs -u
+```
+
+Changes take effect after reboot. To apply without rebooting:
+```bash
+echo 4294967296 > /sys/module/zfs/parameters/zfs_arc_max
+```
+
+### Checking ARC performance
+
+```bash
+# Hit rate — if this is above 90% your working set fits in RAM
+arc_summary | grep "Cache Hit Ratio"
+
+# Watch ARC size live
+watch -n1 'cat /proc/spl/kstat/zfs/arcstats | grep "^size"'
+```
+
+A high hit rate means most reads are served from RAM, not disk — exactly what you want.
+
+---
+
 ## ZFS quick reference
 
 New to ZFS? Here are the commands you'll use day-to-day.
