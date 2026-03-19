@@ -23,7 +23,22 @@ k_poweroff_after_success() {
   k_log "Install completed successfully; ejecting media and powering off"
   sync || true
   eject 2>/dev/null || true
-  sleep 2
+
+  echo
+  printf '\e[1;32m╔══════════════════════════════════════════════════════════╗\e[0m\n'
+  printf '\e[1;32m║                                                          ║\e[0m\n'
+  printf '\e[1;32m║        ✔  Installation complete!                         ║\e[0m\n'
+  printf '\e[1;32m║                                                          ║\e[0m\n'
+  printf '\e[1;32m║   Remove the USB / ISO and boot from disk.               ║\e[0m\n'
+  printf '\e[1;32m║                                                          ║\e[0m\n'
+  printf '\e[1;32m╚══════════════════════════════════════════════════════════╝\e[0m\n'
+  echo
+  local i
+  for i in 10 9 8 7 6 5 4 3 2 1; do
+    printf '\r  \e[1;33mPowering off in %2d second(s)...\e[0m' "$i"
+    sleep 1
+  done
+  echo
   systemctl poweroff --no-wall 2>/dev/null || poweroff -f 2>/dev/null || shutdown -P now 2>/dev/null || true
 }
 
@@ -977,11 +992,17 @@ guided_prompt() {
     if [[ -n "${DEBZ_AZURE_SUBSCRIPTION_ID:-}" ]]; then _ok "Azure:" "${DEBZ_AZURE_SUBSCRIPTION_ID:0:8}…"; fi
     if [[ -n "${DEBZ_GCP_PROJECT_ID:-}"    ]]; then _ok "GCP:"     "${DEBZ_GCP_PROJECT_ID}"; fi
   fi
-  echo
-  _warn "This will permanently ERASE ${DEBZ_DISK}. There is no undo."
-  echo
-  v="$(_ask "Type 'yes' to begin installation")"
-  [[ "${v}" == "yes" ]] || { _err "Aborted."; exit 1; }
+  while true; do
+    echo
+    _warn "This will permanently ERASE ${DEBZ_DISK}. There is no undo."
+    echo
+    v="$(_ask "Type 'yes' to begin  ·  'no' to restart from the top")"
+    case "${v}" in
+      yes)  break ;;
+      no|n) _info "Restarting installer..."; sleep 1; guided_prompt; return ;;
+      *)    _err "Please type 'yes' to install or 'no' to go back." ;;
+    esac
+  done
 }
 
 
@@ -1007,43 +1028,54 @@ main() {
   k_save_effective_config
   k_preflight
 
-  k_install_zfs_storage
+  # ── Installation progress ─────────────────────────────────────────────────
+  _hdr "Installing — do not power off"
 
+  _info "▸  Wiping and partitioning ${DEBZ_DISK}..."
+  k_install_zfs_storage
   export DEBZ_PART_ROOT="${DEBZ_PART_ROOT:-${DEBZ_ROOT_PART:-}}"
   export DEBZ_ROOT_PART="${DEBZ_ROOT_PART:-${DEBZ_PART_ROOT:-}}"
   export DEBZ_PART_EFI="${DEBZ_PART_EFI:-${DEBZ_EFI_PART:-}}"
   export DEBZ_EFI_PART="${DEBZ_EFI_PART:-${DEBZ_PART_EFI:-}}"
+  _ok "Storage"     "ZFS pools created on ${DEBZ_DISK}"
 
+  _info "▸  Bootstrapping Debian base system (this takes a few minutes)..."
   k_bootstrap_base
+  _ok "Bootstrap"   "Debian trixie base installed"
+
+  _info "▸  Configuring network..."
   k_configure_network
+  _ok "Network"     "${DEBZ_NET_METHOD:-dhcp}"
+
+  _info "▸  Applying security settings..."
   k_configure_security
+  _ok "Security"    "SSH hardened, APT holds set"
+
+  _info "▸  Installing profile packages (${DEBZ_PROFILE:-server})..."
   k_apply_profile
   k_install_tools
+  _ok "Profile"     "${DEBZ_PROFILE:-server}"
+
+  _info "▸  Finalising system..."
   k_write_install_manifest
   k_seed_ca
   k_enable_firstboot
   k_install_bootloader
+  _ok "Bootloader"  "ZFSBootMenu + EFI registered"
 
   # Copy live session state DB to target if it exists
   if [[ -f "/var/lib/debz/state.db" ]]; then
     k_log "Copying live session state.db to target..."
     mkdir -p "${DEBZ_TARGET_MNT}/var/lib/debz"
     cp "/var/lib/debz/state.db" "${DEBZ_TARGET_MNT}/var/lib/debz/state.db"
-    k_log "State DB copied ($(du -sh /var/lib/debz/state.db | cut -f1))"
   fi
 
-  # Take initial @install snapshot across all rpool datasets for instant rollback
-  k_log "Taking initial @install snapshot..."
+  _info "▸  Taking factory snapshot..."
   local _snap_ts
   _snap_ts=$(date -u +%Y%m%dT%H%M%SZ)
-  # Snapshot every rpool dataset recursively — this creates the factory-fresh restore point
-  zfs snapshot -r "rpool@install-${_snap_ts}" 2>/dev/null && \
-    k_log "  rpool@install-${_snap_ts} — recursive snapshot OK" || \
-    k_log "  WARN: rpool recursive snapshot failed (non-fatal)"
-  zfs snapshot -r "bpool@install-${_snap_ts}" 2>/dev/null && \
-    k_log "  bpool@install-${_snap_ts} — recursive snapshot OK" || \
-    k_log "  WARN: bpool recursive snapshot failed (non-fatal)"
-  k_log "Initial snapshot complete — system can be rolled back to this point at any time"
+  zfs snapshot -r "rpool@install-${_snap_ts}" 2>/dev/null || true
+  zfs snapshot -r "bpool@install-${_snap_ts}" 2>/dev/null || true
+  _ok "Snapshot"    "rpool@install-${_snap_ts}"
 
   k_log "Install complete"
   k_poweroff_after_success
