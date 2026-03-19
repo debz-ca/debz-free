@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Web UI — debz</title>
+  <meta name="description" content="debz Web UI — Python3 asyncio management interface with install wizard, WireGuard panels, ZFS browser, and Kubernetes management."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html" class="active">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Web UI</div>
+
+    <h1>Web UI</h1>
+    <p class="page-subtitle">
+      debz includes a browser-based management interface backed by a Python 3 asyncio server.
+      It provides install wizards, real-time status panels, ZFS and Kubernetes management, and
+      live log streaming &mdash; all over a WebSocket API.
+    </p>
+
+    <h2 id="screenshots">Screenshots</h2>
+    <p>Every screenshot is the real running UI on live hardware.</p>
+
+    <div class="gallery-grid" style="margin-bottom:2.5rem">
+
+      <!-- Install wizard — wide -->
+      <a class="gallery-card gallery-wide" href="../screenshots/install.png" target="_blank">
+        <img src="../screenshots/install.png" alt="debz Install Wizard"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Installer &mdash; five steps, under 90 seconds, fully unattended option</div>
+          <p class="gallery-desc">
+            Five screens: <strong>Template</strong> (MASTER / KVM / STORAGE / VDI),
+            <strong>Disk</strong> (auto-detected with size and model),
+            <strong>Identity</strong> (hostname, cluster index, WireGuard plane assignments),
+            <strong>Options</strong> (ZFS encryption, darksite payload, mirror vs. single disk),
+            and <strong>Confirm</strong> (full summary before any write). The same install runs
+            headlessly via <code>answers.env</code>. No Anaconda. No Calamares. No compiled binary.
+            Every step is a standard Debian shell operation &mdash; fully auditable by anyone with a shell.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">5-step wizard</span>
+            <span class="gallery-tag">answers.env headless</span>
+            <span class="gallery-tag">debootstrap</span>
+            <span class="gallery-tag">zfsbootmenu</span>
+            <span class="gallery-tag">fully auditable</span>
+            <span class="gallery-tag">no vendor sdk</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Spawn — wide -->
+      <a class="gallery-card gallery-wide" href="../screenshots/spawn.png" target="_blank">
+        <img src="../screenshots/spawn.png" alt="debz Spawn"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Spawn &mdash; launch a VM or microcontainer from any browser</div>
+          <p class="gallery-desc">
+            <strong>Spawning</strong> creates a new VM or Firecracker microVM on any KVM host
+            reachable over the WireGuard mesh. Pick type, template, target host, name, count, vCPUs,
+            RAM, and disk. debz stamps a ZFS CoW clone from the matching golden image, injects a
+            unique identity (hostname, machine-id, WireGuard keys), and boots it in under 30 seconds.
+          </p>
+          <p class="gallery-desc">
+            <strong>Firecracker microVMs</strong> cold-start in under 125 ms. Clone 50 from a golden
+            rootfs in a minute. Each costs ~1 MB on disk until it diverges.
+            Use them for ephemeral CI jobs, serverless-style workloads, or high-density function runners.
+          </p>
+          <div class="gallery-req">
+            <strong>One-time prerequisite per KVM/Proxmox host:</strong>
+            SSH key-based root access from the MASTER node.<br/>
+            <code>ssh-copy-id root@&lt;your-kvm-or-proxmox-host&gt;</code>
+          </div>
+          <div class="gallery-tags" style="margin-top:0.75rem">
+            <span class="gallery-tag">kvm · qemu</span>
+            <span class="gallery-tag">firecracker microvm</span>
+            <span class="gallery-tag">cow clone</span>
+            <span class="gallery-tag">125ms cold-start</span>
+            <span class="gallery-tag">ssh-copy-id prereq</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Golden images — wide -->
+      <a class="gallery-card gallery-wide" href="../screenshots/golden-image.png" target="_blank">
+        <img src="../screenshots/golden-image.png" alt="debz Golden Images"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Golden Images &mdash; build once, stamp everywhere, darksite-ready</div>
+          <p class="gallery-desc">
+            A golden image is a ZFS boot environment snapshot of a fully-configured node. Stamp hundreds
+            of CoW clones from it instantly — each costs ~1 MB until it diverges, takes under 5 seconds,
+            and gets a unique hostname, machine-id, and WireGuard identity. No cloud-init. No Packer.
+          </p>
+          <p class="gallery-desc">
+            The <strong>darksite pipeline</strong>: populate <code>darksite/</code> with private
+            <code>.deb</code> packages, OCI container images, Helm charts, Ansible playbooks, and
+            <code>postinstall.sh</code> before building. They are baked into every stamped clone.
+            No internet, no registry, no artifact server required at deploy time.
+            <strong>Every package is a standard Debian .deb. Every step is a shell script.
+            100% auditable.</strong>
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">zfs snapshot</span>
+            <span class="gallery-tag">cow clone stamping</span>
+            <span class="gallery-tag">darksite payload</span>
+            <span class="gallery-tag">air-gap ready</span>
+            <span class="gallery-tag">no packer</span>
+            <span class="gallery-tag">100% auditable</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- WireGuard + Salt -->
+      <a class="gallery-card" href="../screenshots/wireguard.png" target="_blank">
+        <img src="../screenshots/wireguard.png" alt="WireGuard"/>
+        <div class="gallery-info">
+          <div class="gallery-title">WireGuard &mdash; four planes, live peer management</div>
+          <p class="gallery-desc">
+            Four interfaces (wg0&ndash;wg3) with deterministic IPs per cluster index.
+            Peer table with handshake age and transfer bytes. Add or remove peers live without
+            restarting the interface.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">wg0–wg3</span>
+            <span class="gallery-tag">deterministic IPs</span>
+            <span class="gallery-tag">live peer add/remove</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="gallery-card" href="../screenshots/salt.png" target="_blank">
+        <img src="../screenshots/salt.png" alt="Salt fleet"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Salt &mdash; fleet management, your states on top</div>
+          <p class="gallery-desc">
+            Every node self-registers via cert-authenticated auto-accept on firstboot.
+            Fleet table with last-seen, role, and highstate status. debz uses Salt for
+            WireGuard key distribution and K8s join tokens &mdash; not your workloads.
+            Bring your own states via the darksite payload.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">cert auth</span>
+            <span class="gallery-tag">auto-register</span>
+            <span class="gallery-tag">highstate fleet</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- K8s + ZFS -->
+      <a class="gallery-card" href="../screenshots/kubernetes.png" target="_blank">
+        <img src="../screenshots/kubernetes.png" alt="Kubernetes"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Kubernetes &mdash; workers auto-join in 90 seconds</div>
+          <p class="gallery-desc">
+            KVM nodes fetch the join token from Salt mine and run <code>kubeadm join</code>
+            automatically on first boot. Cilium CNI over wg2. Hubble observability.
+            No cloud load balancer, no NodePort gymnastics.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">cilium · wg2</span>
+            <span class="gallery-tag">auto-join</span>
+            <span class="gallery-tag">hubble</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="gallery-card" href="../screenshots/zfs.png" target="_blank">
+        <img src="../screenshots/zfs.png" alt="ZFS pools"/>
+        <div class="gallery-info">
+          <div class="gallery-title">ZFS &mdash; pool health, datasets, snapshots</div>
+          <p class="gallery-desc">
+            Pool RAID topology, health state, error counts, full dataset tree with
+            used/available sizes. Snapshot rollback and clone from the panel.
+            Deterministic layout identical on every node in the estate.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">pool health</span>
+            <span class="gallery-tag">dataset tree</span>
+            <span class="gallery-tag">snapshot rollback</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- VMs + Network + Logs + Live -->
+      <a class="gallery-card" href="../screenshots/vm.png" target="_blank">
+        <img src="../screenshots/vm.png" alt="Virtual Machines"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Virtual Machines &mdash; zvol-backed, instant snapshots</div>
+          <p class="gallery-desc">
+            Running and stopped VMs with start / stop / reboot / destroy actions.
+            Backed by ZFS zvols — CoW snapshots, compression, and replication included automatically.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">kvm · qemu</span>
+            <span class="gallery-tag">zvol-backed</span>
+            <span class="gallery-tag">instant snapshots</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="gallery-card" href="../screenshots/network.png" target="_blank">
+        <img src="../screenshots/network.png" alt="Network interfaces"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Network &mdash; live kernel state</div>
+          <p class="gallery-desc">
+            Every interface &mdash; physical, bridge, VLAN, all four WireGuard planes &mdash;
+            with addresses, MTU, and link state as reported by the kernel. Not config-file assumptions.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">all interfaces</span>
+            <span class="gallery-tag">live kernel state</span>
+            <span class="gallery-tag">wg planes</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="gallery-card" href="../screenshots/logs.png" target="_blank">
+        <img src="../screenshots/logs.png" alt="Logs"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Logs &mdash; real-time tail, every source</div>
+          <p class="gallery-desc">
+            System journal, installer, Salt, snapshots, firstboot &mdash; streamed live over WebSocket.
+            Switch sources instantly. Installer logs preserved after install.
+            Audit trail (debz-audit) streams here too.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">journal</span>
+            <span class="gallery-tag">installer · salt</span>
+            <span class="gallery-tag">audit trail</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="gallery-card" href="../screenshots/login-live-live.png" target="_blank">
+        <img src="../screenshots/login-live-live.png" alt="GDM live session"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Live session &mdash; full GNOME, no install required</div>
+          <p class="gallery-desc">
+            The ISO boots into a complete GNOME desktop in RAM. Identical to the installed system.
+            Burn to USB or load in a hypervisor &mdash; the target becomes a live desktop and
+            installable node immediately.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">gnome live</span>
+            <span class="gallery-tag">ram-only</span>
+            <span class="gallery-tag">usb or vm</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Cluster Designer — wide -->
+      <a class="gallery-card gallery-wide" href="../screenshots/cluster-designer.png" target="_blank">
+        <img src="../screenshots/cluster-designer.png" alt="Cluster Designer"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Cluster Designer &mdash; full topology in one view</div>
+          <p class="gallery-desc">
+            Define node groups by role, count, vCPU, RAM, disk, and WireGuard planes. The topology
+            canvas renders the full cluster map live as you design. Load a built-in template
+            (SCC 6-node, HA Production 16-node k8s, k8s Minimal) or import any saved
+            <code>.json</code>. Every design includes firewall rules and enabled services &mdash;
+            hit <strong>Export</strong> to get a single shareable file. Hit <strong>Deploy</strong>
+            to route straight to the Cloud provisioner.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">role-aware topology</span>
+            <span class="gallery-tag">wg plane assignment</span>
+            <span class="gallery-tag">import / export json</span>
+            <span class="gallery-tag">scc · ha-k8s templates</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Firewall Designer — wide -->
+      <a class="gallery-card gallery-wide" href="../screenshots/firewall.png" target="_blank">
+        <img src="../screenshots/firewall.png" alt="Firewall Designer"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Firewall Designer &mdash; zone rules + live nftables preview</div>
+          <p class="gallery-desc">
+            Zone-based rule table (external / dmz / internal / wg / mgmt) with WireGuard plane
+            badges showing which tunnel each rule targets. Add, delete, and edit rules inline.
+            Hit <strong>Preview nftables</strong> to generate a valid <code>nftables.conf</code>
+            from the current ruleset &mdash; copy it directly to clipboard. Templates load their
+            full firewall policy automatically (SCC: 8 rules, HA k8s: 13 rules including
+            6443, etcd 2379/2380, NodePorts 30000–32767).
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">zone-based rules</span>
+            <span class="gallery-tag">wg-plane aware</span>
+            <span class="gallery-tag">live nftables preview</span>
+            <span class="gallery-tag">copy to clipboard</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Services -->
+      <a class="gallery-card" href="../screenshots/services.png" target="_blank">
+        <img src="../screenshots/services.png" alt="Services Stack Configurator"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Services &mdash; stack configurator</div>
+          <p class="gallery-desc">
+            Toggle 18 services across 5 categories (Security, Automation, Monitoring,
+            Kubernetes, Data, Management). Templates pre-select the right stack for the role.
+            Enabled services feed the deployment plan.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">18 services</span>
+            <span class="gallery-tag">role-aware</span>
+            <span class="gallery-tag">salt · prometheus · k3s</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Cloud Deploy -->
+      <a class="gallery-card" href="../screenshots/cloud-deploy.png" target="_blank">
+        <img src="../screenshots/cloud-deploy.png" alt="Cloud Deploy"/>
+        <div class="gallery-info">
+          <div class="gallery-title">Cloud Deploy &mdash; AWS · GCP · Azure in one shot</div>
+          <p class="gallery-desc">
+            Store provider credentials once. Select a cluster template. The resource estimator
+            maps node groups to instance specs and shows per-provider cost. Hit Deploy and
+            watch the provisioning log stream live over WebSocket.
+          </p>
+          <div class="gallery-tags">
+            <span class="gallery-tag">aws · gcp · azure</span>
+            <span class="gallery-tag">cost estimate</span>
+            <span class="gallery-tag">live provision log</span>
+          </div>
+        </div>
+      </a>
+
+    </div><!-- /.gallery-grid -->
+
+    <h2>Panels</h2>
+
+    <div class="section-label">Dashboard</div>
+    <h3>Dashboard</h3>
+    <p>
+      The landing panel. Stat cards show: hostname, node role/template, CPU count, RAM, node
+      index, wg1 IP. A mini WireGuard table shows all four planes with their current state
+      (up/down) and peer count. Quick-action buttons: reboot, shutdown, run highstate, open logs.
+    </p>
+
+    <div class="section-label">Install</div>
+    <h3>Install</h3>
+    <p>
+      A 5-step guided wizard that mirrors the TUI installer. Progress is streamed in real time
+      via WebSocket. The steps are:
+    </p>
+    <ol>
+      <li><strong>Template</strong> &mdash; select master / kvm / storage / vdi with description cards</li>
+      <li><strong>Disk</strong> &mdash; disk list auto-populated from <code>lsblk</code>, topology selector, encryption toggle</li>
+      <li><strong>Identity</strong> &mdash; hostname, username, password, SSH public key (optional)</li>
+      <li><strong>Options</strong> &mdash; timezone, locale, keyboard, network method, NVIDIA/eBPF toggles</li>
+      <li><strong>Confirm</strong> &mdash; summary of all choices, confirmation checkbox, Install button that starts the installer process with real-time log streaming</li>
+    </ol>
+
+    <div class="section-label">WireGuard</div>
+    <h3>WireGuard</h3>
+    <p>
+      Four plane cards (wg0&ndash;wg3) each showing: interface state, assigned IP, listen port, and
+      number of active peers. Below the cards, a peer table for wg1 shows all enrolled nodes with
+      their last-handshake time, allowed IPs, and a &ldquo;remove peer&rdquo; action. The panel
+      auto-refreshes every 5 seconds via WebSocket.
+    </p>
+
+    <div class="section-label">Network</div>
+    <h3>Network</h3>
+    <p>
+      Interface table showing all network interfaces (physical and virtual): name, state, MAC,
+      IP addresses. Includes WireGuard interfaces alongside Ethernet. DHCP lease information
+      is shown where available via NetworkManager.
+    </p>
+
+    <div class="section-label">Golden Images</div>
+    <h3>Golden Images</h3>
+    <p>
+      Per-template status cards showing whether a golden image exists, its size, and last build
+      time. Build and stamp buttons trigger the corresponding <code>deploy.sh</code> commands
+      with real-time output streamed to the panel. Stamp form: template, count, base hostname,
+      base index.
+    </p>
+
+    <div class="section-label">Spawn</div>
+    <h3>Spawn</h3>
+    <p>
+      Form for spawning VMs, microVMs (Firecracker), containers, or Kubernetes pods from golden
+      image clones. Options: template, target host (local libvirt or Proxmox), count, resource
+      overrides (CPU/RAM/disk). Spawn jobs are shown with live status.
+    </p>
+
+    <div class="section-label">VMs</div>
+    <h3>VMs</h3>
+    <p>
+      libvirt VM table with columns: name, state, CPUs, RAM, disk. Actions per VM:
+      start, shutdown, force-stop (destroy), and delete (with disk). A &ldquo;new VM&rdquo;
+      button opens the spawn wizard pre-filled for local libvirt.
+    </p>
+
+    <div class="section-label">ZFS</div>
+    <h3>ZFS</h3>
+    <p>
+      Pool health overview with usage bars per pool. Dataset browser showing the full dataset
+      tree with mountpoint, used, available, and compression ratio. Actions: create snapshot,
+      list snapshots for a dataset, rollback, promote clone. Boot environment panel mirroring
+      <code>debz-be list</code> with activate and rollback buttons.
+    </p>
+
+    <div class="section-label">Kubernetes</div>
+    <h3>Kubernetes</h3>
+    <p>
+      Node table with columns: name, role (control-plane/worker), status, wg2 IP, Kubernetes
+      version, pods running. Actions: join-as-worker (runs <code>debz-k8s-join</code> on a
+      remote node via Salt), drain, cordon, uncordon. A pod count sparkline per node.
+    </p>
+
+    <div class="section-label">Salt</div>
+    <h3>Salt</h3>
+    <p>
+      Minion table: minion ID, wg1 IP, node role, node index, last highstate time, status.
+      Actions per minion: run highstate, ping, remove key. Cluster-wide actions:
+      highstate-all, ping-all, accept-all-pending. Pending key list with accept/reject per key.
+    </p>
+
+    <div class="section-label">Logs</div>
+    <h3>Logs</h3>
+    <p>
+      Real-time log tailing via WebSocket. A dropdown selects which log file to tail.
+      Available logs: installer, storage, ZFS, network, security, bootstrap, snapshots,
+      firstboot, autobootstrap. A filter field matches lines by regex. ANSI color codes
+      are rendered (green for OK, yellow for warnings, red for errors).
+    </p>
+
+    <h2>WebSocket API</h2>
+    <p>
+      All UI actions go through the WebSocket at <code>ws://&lt;host&gt;:8081/ws</code>.
+      Messages are JSON with an <code>action</code> field and optional parameters.
+      Responses stream back as JSON events with <code>type: "data" | "progress" | "done" | "error"</code>.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Action</th><th>Description</th><th>Key params</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>system_info</td><td>Hostname, role, CPU, RAM, node index</td><td>&mdash;</td></tr>
+        <tr><td>list_disks</td><td>Block devices from lsblk</td><td>&mdash;</td></tr>
+        <tr><td>install</td><td>Run debz-installer with answers</td><td>answers (object)</td></tr>
+        <tr><td>golden</td><td>Build a golden image</td><td>template, size</td></tr>
+        <tr><td>stamp</td><td>Stamp clones from a golden image</td><td>template, count, base_hostname, base_index</td></tr>
+        <tr><td>spawn</td><td>Spawn VMs from clones</td><td>template, target, count</td></tr>
+        <tr><td>vm_op</td><td>start / stop / destroy / delete a VM</td><td>vm_name, op</td></tr>
+        <tr><td>zfs_list</td><td>Dataset tree</td><td>pool (optional)</td></tr>
+        <tr><td>k8s_nodes</td><td>Kubernetes node list</td><td>&mdash;</td></tr>
+        <tr><td>k8s_join</td><td>Join a node to the K8s cluster</td><td>node_name</td></tr>
+        <tr><td>salt_status</td><td>Minion table with grains</td><td>&mdash;</td></tr>
+        <tr><td>salt_highstate</td><td>Run highstate on minion(s)</td><td>target (* for all)</td></tr>
+        <tr><td>salt_accept_all</td><td>Accept all pending minion keys</td><td>&mdash;</td></tr>
+        <tr><td>wg_status</td><td>WireGuard interface and peer state</td><td>iface (optional)</td></tr>
+        <tr><td>network_info</td><td>Interface list</td><td>&mdash;</td></tr>
+        <tr><td>golden_status</td><td>Golden image existence + metadata</td><td>template (optional)</td></tr>
+        <tr><td>tail_log</td><td>Stream a log file</td><td>log_name, filter (optional)</td></tr>
+      </tbody>
+    </table>
+
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,30 @@
+# cloud-tools.list.chroot
+# Cloud provider CLIs and deployment utilities baked into the live ISO.
+# AWS CLI v2, GCP SDK, and Azure CLI are installed via hooks (not apt)
+# because their official Debian packages require external repos.
+# This list covers what IS available in Debian trixie repos.
+
+# Generic cloud / infra utilities
+jq
+curl
+unzip
+ca-certificates
+gnupg
+apt-transport-https
+lsb-release
+python3-pip
+python3-venv
+pipx
+
+# Terraform (HashiCorp) - available in Debian trixie
+# terraform  # not in main repos — installed via hook 0075-cloud-tools.hook.chroot
+
+# Ansible (for cloud inventory / playbooks)
+ansible
+
+# SSH multiplexing / remote management
+pssh
+sshpass
+
+# DNS utilities (useful for cloud discovery)
+bind9-dnsutils

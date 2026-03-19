@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>debz — Any silicon. Anywhere. One platform.</title>
+  <meta name="description" content="Debian 13 infrastructure host OS — ZFS on root, boot environments, four WireGuard planes, Ansible-ready, Kubernetes, golden image pipeline, air-gap installer, Web UI."/>
+  <meta property="og:title" content="debz — Any silicon. Anywhere. One platform."/>
+  <meta property="og:description" content="Debian 13 · ZFS · ZFSBootMenu · 4 WireGuard planes · Ansible-ready · Kubernetes · Golden images · Air-gap installer"/>
+  <meta property="og:url" content="https://debz.ca"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="site.css"/>
+  <style>
+.page-view { display: none; }
+.page-view.active { display: block; }
+.sb-view.active { color: #34d399; border-left-color: #34d399; background: rgba(52,211,153,0.11); font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="#" class="sb-view active" data-view="view-home">Overview</a>
+      <a href="#" class="sb-view" data-view="view-howworks">How It Works</a>
+      <a href="#" class="sb-view" data-view="view-screenshots">Screenshots</a>
+      <a href="#" class="sb-view" data-view="view-download">Download</a>
+    </nav>
+    <div class="sidebar-label">PLATFORM</div>
+    <nav class="sidebar-nav">
+      <a href="#" class="sb-view" data-view="view-capabilities">What It Does</a>
+      <a href="#" class="sb-view" data-view="view-pipeline">Golden Pipeline</a>
+      <a href="#" class="sb-view" data-view="view-storage">Storage &amp; ZFS</a>
+      <a href="#" class="sb-view" data-view="view-compare">Comparison</a>
+    </nav>
+    <div class="sidebar-label">EDITIONS</div>
+    <nav class="sidebar-nav">
+      <a href="#" class="sb-view" data-view="view-editions">Free vs Pro</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="#" class="sb-view" data-view="view-docs">Documentation</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <div class="page-view active" id="view-home">
+    <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+    <div class="hero-wrap">
+      <h1>Any silicon. <em>Anywhere.</em> One platform.</h1>
+      <p class="hero-sub">
+      </p>
+      <div class="hero-actions">
+        <a href="https://archive.org/download/debz-linux/debz-free-amd64.hybrid.iso" class="btn btn-primary" target="_blank" rel="noopener">&#8595;&nbsp; Download Free</a>
+        <a href="https://archive.org/download/debz-linux/debz-pro-amd64.hybrid.iso" class="btn btn-secondary" target="_blank" rel="noopener">&#8595;&nbsp; Download Pro</a>
+        <a href="#" class="btn btn-ghost sb-view" data-view="view-editions">Compare editions</a>
+      </div>
+      <div class="hero-steps">
+        <div class="hero-step">
+          <div class="hs-num">1</div>
+          <div class="hs-label">Download</div>
+          <div class="hs-desc">
+            <a href="https://archive.org/download/debz-linux/debz-free-amd64.hybrid.iso" class="btn btn-primary" style="font-size:0.75rem;padding:0.4rem 0.9rem;" target="_blank" rel="noopener">&#8595; Free</a>
+            <a href="https://archive.org/download/debz-linux/debz-pro-amd64.hybrid.iso" class="btn btn-secondary" style="font-size:0.75rem;padding:0.4rem 0.9rem;" target="_blank" rel="noopener">&#8595; Pro</a>
+          </div>
+        </div>
+        <div class="hs-arrow">&#8594;</div>
+        <div class="hero-step">
+          <div class="hs-num">2</div>
+          <div class="hs-label">Burn / Upload</div>
+          <div class="hs-desc">
+            <code class="hs-code">dd if=debz.iso of=/dev/sdX bs=4M</code><br/>
+            <a href="https://rufus.ie/en/" target="_blank" rel="noopener" class="hs-link">rufus.ie</a> on Windows &nbsp;&middot;&nbsp; or upload ISO to Proxmox
+          </div>
+        </div>
+        <div class="hs-arrow">&#8594;</div>
+        <div class="hero-step hs-dunn">
+          <div class="hs-num">&#10003;</div>
+          <div class="hs-label">Power on!</div>
+        </div>
+      </div>
+      <a href="screenshots/debz-cluster-deploy.png" target="_blank" class="hero-screenshot">
+        <img src="screenshots/debz-cluster-deploy.png" alt="debz — Cluster Deploy"/>
+      </a>
+      <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--muted);max-width:680px;margin-left:auto;margin-right:auto;text-align:center;line-height:1.6">
+        The Cluster Deploy view lets you define a multi-node cluster — assigning roles, storage profiles, and WireGuard planes — then deploy it across bare metal or VMs in a single operation. Every node is provisioned from the same ISO; the Cluster Manager becomes the source of truth for the entire cluster.
+      </p>
+    </div>
+
+    <p style="margin-top:1rem;font-size:0.9rem">
+      <a href="#screenshots" class="sb-view" data-view="view-screenshots">Screenshots &rarr;</a>
+    </p>
+
+    <hr class="divider"/>
+
+    <!-- ── Author note ───────────────────────────────────────────────────────── -->
+    <section id="ethos" class="author-note">
+      <div class="section-label">Why ZFS</div>
+      <blockquote class="author-quote">
+        <p>
+          Low MTTR. Invisible deployment. A stable base that just works every time.
+          Boot environments make a bad upgrade a 30-second rollback. Snapshots before every
+          <code>apt upgrade</code> are automatic. Encryption, replication, atomic rollbacks
+          &mdash; baked in, not bolted on.
+        </p>
+        <p>
+          The same dataset model that protects the OS extends to everything running on it.
+          VMs, containers, Kubernetes PVs, Firecracker microVMs &mdash; back any of them with
+          a ZFS dataset and you get snapshots, encryption, and <code>zfs send/recv</code>
+          replication for free. A running container or pod becomes something you can snapshot,
+          clone, and ship to another node without touching the workload.
+        </p>
+        <p>
+          The idea was to engineer all of that into a single command &mdash; or a mouse click.
+          Burn it, plug it into a server, and it becomes a KVM hypervisor ready to spin up
+          VMs and clones. Plug it into a laptop, use it as a desktop, power off, and your
+          machine is exactly as you left it. Span a cluster across Proxmox, AWS, Azure, and GCP
+          simultaneously &mdash; it doesn&rsquo;t replace your platform, it builds a minimal
+          one underneath it, out of nothing but a base Debian 13 ISO.
+        </p>
+        <p>
+          A bare-metal deployment tool, built from scratch, just for you &mdash; enjoy.
+        </p>
+        <div class="author-sig">&mdash; anthony</div>
+      </blockquote>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- ── Beta release notice ───────────────────────────────────────────────── -->
+    <section id="beta-release">
+      <div class="section-label">Beta Release</div>
+      <h2>beta_0.08 — Deploy Control Plane.</h2>
+
+      <div class="callout" style="border-color:#34d39944;background:#0a1f14;margin-bottom:1.25rem">
+        <strong style="color:#34d399">beta_0.08 supports one thing: installing the Cluster Manager.</strong><br/>
+        Boot the ISO, run the installer, select <strong>Deploy Control Plane</strong>,
+        and the full management system installs permanently onto that machine. No live USB
+        required after install. Worker node templates, golden image pipeline, and additional
+        profiles are in active development.
+      </div>
+
+      <div class="feature-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="feature-card" style="border-color:#34d39944">
+          <div class="feature-icon">&#128421;&#65039;</div>
+          <h3>Control Plane — Desktop</h3>
+          <div style="font-size:0.78rem;color:var(--accent);margin-bottom:0.5rem;font-weight:600">GNOME &middot; stripped down</div>
+          <p style="color:var(--subtle);line-height:1.7">
+            Installs GNOME with a minimal dock: terminal, tmux, Firefox, and the debz
+            installer shortcut. Nothing else on the desktop — no distractions. The Web UI
+            management dashboard auto-starts and is pinned to the dock. This is the
+            hands-on control plane image — log in locally and manage the cluster from the
+            desktop or browser.
+          </p>
+        </div>
+        <div class="feature-card" style="border-color:#3b82f644">
+          <div class="feature-icon">&#128241;</div>
+          <h3>Control Plane — Server</h3>
+          <div style="font-size:0.78rem;color:#60a5fa;margin-bottom:0.5rem;font-weight:600">Headless &middot; SSH + Web UI</div>
+          <p style="color:var(--subtle);line-height:1.7">
+            Headless install — no GNOME, no display manager. The Web UI runs as a
+            systemd service on port 8080 and is accessible from any browser on the network.
+            SSH in, manage via the Web UI, or use Ansible playbooks. Same ZFS layout,
+            same WireGuard planes, same enrollment API — just no local desktop session.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:1rem;border-color:#f5922244;background:#1a1000">
+        <strong style="color:#f59222">&#9888; Beta scope</strong> — Only the Cluster Manager install is supported in beta_0.08.
+        Worker node provisioning, the golden image pipeline, and cloud deploy are functional
+        in the live ISO but will be officially supported in the next release.
+        <a href="https://github.com/debz-ca/debz" target="_blank" rel="noopener" style="color:#f59222">Report issues &rarr;</a>
+      </div>
+    </section>
+
+    <hr class="divider"/>
+    </div><!-- /#view-home -->
+
+    <div class="page-view" id="view-capabilities">
+    <!-- ── Features ──────────────────────────────────────────────────────────── -->
+    <section id="features">
+      <div class="section-label">Capabilities</div>
+      <h2>Everything a host OS should be.</h2>
+      <p>
+        Opinionated decisions are made upfront so you don&rsquo;t have to. Every feature serves one goal:
+        a host substrate that is secure, rollback-capable, cluster-ready, and deployable anywhere &mdash;
+        with or without internet access.
+      </p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#128452;&#65039;</div>
+          <h3>ZFS on root &mdash; always</h3>
+          <p>Every mount point is a ZFS dataset. Deterministic layout, AES-256-GCM encryption, dedup and compression available without restrictions. rpool uses the full modern feature set &mdash; no grub2 compat lock.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9194;</div>
+          <h3>Boot environments</h3>
+          <p>ZFSBootMenu manages OS snapshots as bootable environments. Bad upgrade? Roll back in 30 seconds &mdash; no reinstall, no pain. <code>debz-upgrade</code> creates a BE automatically before every dist-upgrade.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128248;</div>
+          <h3>Continuous snapshots</h3>
+          <p>APT hooks snapshot rpool before every package operation. A 15-minute timer protects /srv. Count-based retention (10 OS snapshots, 4 /srv snapshots) keeps it lean with no time-based expiry to configure.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9992;&#65039;</div>
+          <h3>Air-gap installer</h3>
+          <p>Full APT mirror baked into the ISO at build time. Deploy in a SCIF, restricted data centre, or a ship at sea &mdash; no outbound internet required at any point during or after installation.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128272;</div>
+          <h3>Secure Boot + TPM</h3>
+          <p>Generates a per-machine MOK key, signs ZFS DKMS modules, configures auto-signing for future kernel upgrades, and queues MOK enrollment automatically on first boot.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128301;</div>
+          <h3>eBPF observability</h3>
+          <p>bpftool, bpftrace, and bcc-tools pre-installed. Attach probes to any kernel event &mdash; syscalls, TCP retransmits, block I/O, DNS, process ancestry &mdash; without recompiling or rebooting.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127760;</div>
+          <h3>Four WireGuard planes</h3>
+          <p>wg0 enrollment, wg1 management, wg2 Kubernetes, wg3 storage. Dedicated encrypted overlay for each traffic class. Live peer updates via <code>wg set</code> &mdash; no interface restart as nodes join.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9881;&#65039;</div>
+          <h3>Ansible-ready out of the box</h3>
+          <p>Ansible is installed on every node. Bring your own playbooks — drop them into <code>darksite/playbooks/</code> and run them from <code>postinstall.sh</code>. The WireGuard mesh is your inventory, ZFS datasets are your storage backend. Your automation runs on top, unmodified.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#10024;</div>
+          <h3>Kubernetes on wg2</h3>
+          <p>kubeadm + Cilium (kubeProxyReplacement=true) + Hubble. All nodes bind kubelet and kubeadm to wg2. Workers join via <code>debz-k8s-join</code> which fetches the join command from the Cluster Manager automatically.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127381;</div>
+          <h3>Golden image pipeline</h3>
+          <p>Headless QEMU install &rarr; qcow2 golden image &rarr; CoW thin-clone per node (~1 MB each). Each clone gets a unique hostname, machine identity, and network configuration stamped in seconds.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128421;&#65039;</div>
+          <h3>Browser management UI</h3>
+          <p>Python3 asyncio WebSocket server at :8080. 5-step install wizard, WireGuard panels, Golden Images, VMs, ZFS pool health, Kubernetes nodes, fleet inventory, real-time log streaming.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127909;</div>
+          <h3>VDI streaming</h3>
+          <p>mediamtx baked in: SRT ingest :8890, HLS :8888, WebRTC :8889. wf-recorder &rarr; FFmpeg pipeline captures Wayland output. Optional NVIDIA nvenc acceleration. Stream to any browser or SRT client.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128257;</div>
+          <h3>ZFS replication</h3>
+          <p>Any node can stream datasets to any ZFS host &mdash; TrueNAS, another node, or a cloud VM &mdash; using standard <code>zfs send/recv</code> over wg3. RPO of 15 minutes for /srv data.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9889;</div>
+          <h3>DEBZ-SEED unattended install</h3>
+          <p>Attach a FAT32 disk labeled <code>DEBZ-SEED</code> containing <code>answers.env</code>. On live boot, <code>debz-autoinstall.service</code> detects it and runs a fully headless install &mdash; zero interaction required.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128204;</div>
+          <h3>Two ISO profiles</h3>
+          <p>Desktop (GNOME, GDM, dark mode, Web UI on dock) and Server (headless, SSH only). Same installer, same ZFS layout, same WireGuard planes &mdash; different package set. Both ship with eBPF tooling.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128196;</div>
+          <h3>postinstall.sh hooks</h3>
+          <p>Drop your <code>postinstall.sh</code> on the DEBZ-SEED disk. The installer stages and runs it on firstboot inside the installed chroot &mdash; add apt repos, run Ansible playbooks, configure your ETL pipeline. Zero friction.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128736;&#65039;</div>
+          <h3>Ansible + Helm pre-installed</h3>
+          <p>Ansible, Helm, kubectl, AWS CLI, gcloud, Azure CLI, Firecracker, and Hubble are baked into the live ISO. Your playbooks and charts work from day one &mdash; debz just provides the substrate.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#129510;</div>
+          <h3>Drop-in Debian</h3>
+          <p>It&rsquo;s Debian 13 underneath. Replace your existing Debian ISO and gain ZFS, boot environments, WireGuard mesh, and cluster tooling &mdash; without touching a single existing playbook, container, or workflow.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- ── Use cases ──────────────────────────────────────────────────────────── -->
+    <section id="use-cases">
+      <div class="section-label">Use Cases</div>
+      <h2>What can you build?</h2>
+      <p>
+        It&rsquo;s a general-purpose host OS. The ZFS + WireGuard + Kubernetes stack is not
+        prescriptive &mdash; it&rsquo;s a set of primitives you combine for your workload.
+      </p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#127760;</div>
+          <h3>Landing sites + web apps</h3>
+          <p>Run nginx or Caddy on a KVM or STORAGE node. ZFS snapshots protect <code>/srv/www</code>
+          every 15 minutes. Replicate over wg3 to an offsite node for instant failover. Deploy via
+          Ansible or Helm. Serve from bare metal or a Proxmox VM with sub-millisecond disk I/O.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128248;</div>
+          <h3>Remote desktop (VDI)</h3>
+          <p>Deploy the VDI template: mediamtx ingests a wf-recorder SRT stream and re-publishes
+          it as HLS and WebRTC. Any browser connects to port :8889 &mdash; zero client install
+          required. Optional NVIDIA nvenc for GPU-accelerated encode. Wayland desktop fully headless.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9889;</div>
+          <h3>MicroVMs + serverless</h3>
+          <p>Firecracker is pre-installed on KVM nodes. MicroVMs boot in under 125 ms. Stamp 50
+          CoW clones of a golden Firecracker rootfs in minutes. Achieve serverless-like cold-start
+          times on bare metal you own.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128452;&#65039;</div>
+          <h3>Storage cluster</h3>
+          <p>STORAGE template nodes export ZFS pools over NFS, iSCSI, and Samba via wg3.
+          <code>zfs send/recv</code> replicates datasets to TrueNAS, another node, or a
+          cloud VM. 15-minute snapshots of <code>/srv</code> give a 15-minute RPO with zero
+          additional tooling.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128200;</div>
+          <h3>ETL pipeline</h3>
+          <p>KVM nodes running Apache Spark and Kafka with data on ZFS. 15-minute
+          <code>/srv</code> snapshots protect pipeline state. Use <code>postinstall.sh</code>
+          to install pipeline-specific packages from the DEBZ-SEED payload. Each node's
+          hostname and management IP are available as environment variables for per-node configuration.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#10024;</div>
+          <h3>Kubernetes cluster</h3>
+          <p>Cluster Manager + KVM workers with Cilium CNI, Hubble observability, and Helm. All east-west
+          traffic over wg2. <code>debz-k8s-join</code> fetches the join command from the Cluster Manager
+          automatically. Workers join and are fully operational in under 90 seconds from first boot.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9992;&#65039;</div>
+          <h3>Air-gapped data centre</h3>
+          <p>Build the ISO once with your private packages baked into the darksite mirror. Deploy
+          100 nodes from USB or PXE with zero internet access at any stage. DEBZ-SEED darksite
+          directories add site-specific packages per rack.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128640;</div>
+          <h3>Dev / CI lab</h3>
+          <p>Build one golden image per test environment definition. CoW-clone a fresh environment
+          in 30 seconds with a unique hostname, machine-id, and WireGuard identity. Delete the
+          clone after the CI run. Combine with Firecracker for sub-second environment creation.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127968;</div>
+          <h3>Hybrid cloud</h3>
+          <p>The same Ansible playbooks and Helm charts target on-prem KVM nodes and
+          AWS EC2, GCP Compute, or Azure ARM VMs simultaneously. WireGuard wg1 extends across cloud
+          providers &mdash; no VPC peering, no transit gateway, no lock-in.</p>
+        </div>
+      </div>
+      <p style="text-align:center">
+        <a href="docs/extending.html">Extending debz &mdash; full reference &rarr;</a>
+      </p>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- ── Why debz / Power section ──────────────────────────────────────────── -->
+    <section id="power">
+      <div class="section-label">Why debz</div>
+      <h2>No wrappers. No state. No excuses.</h2>
+      <p>
+        Every tool in the modern infrastructure stack adds abstraction, state, and blast radius.
+        Terraform state files corrupt. Packer pipelines drift. Ansible playbooks
+        accumulate workarounds. It eliminates the category. The hard problems &mdash; boot
+        environments, encryption, replication, snapshots, zero-trust networking &mdash; are solved
+        at the OS level, permanently, before your first login.
+      </p>
+
+      <!-- ── No third-party tools ── -->
+      <div class="callout info" style="margin-top:1.5rem">
+        <strong>Third-party tools engineered out of existence.</strong>
+        No Packer. No Terraform. No state files. No Vagrant. No cloud-init templating hacks.
+        No external secret managers. No bolt-on backup agents.
+        When something breaks, you don&rsquo;t debug state &mdash;
+        you roll back the last 15-minute snapshot, or replicate a fresh clone to take its place,
+        and you&rsquo;re running again. The whole estate, under control, in minutes.
+      </div>
+
+      <!-- ── Power capabilities grid ── -->
+      <div class="power-grid" style="margin-top:1.75rem">
+
+        <!-- Spawn -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#9889;</span>
+            <h3>Spawn</h3>
+            <span class="power-tag">clone anything instantly</span>
+          </div>
+          <p>
+            ZFS CoW clones mean a new node, VM, container, or CI environment
+            costs <strong>zero disk space and under five seconds</strong> to create.
+            Clone a golden Firecracker microVM rootfs 50 times in a minute, each with a
+            unique machine-id, hostname, and WireGuard identity. Clone an entire Kubernetes
+            worker template &mdash; the new node joins the cluster automatically, no manual
+            join token, no static IP to manage.
+          </p>
+          <p>
+            This isn&rsquo;t possible with traditional Linux: ext4 and LVM don&rsquo;t offer
+            writable CoW clones you can boot from. Every other approach requires copying
+            gigabytes, re-running config management, or reaching into a registry.
+            debz clones the running state, including memory-resident config.
+          </p>
+          <div class="power-example">
+            <span class="power-example-label">example</span>
+            <code>debz-be clone worker-golden worker-17 &amp;&amp; debz-be activate worker-17</code>
+          </div>
+        </div>
+
+        <!-- Seamless replication -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#8649;</span>
+            <h3>Replicate everything. Seamlessly.</h3>
+            <span class="power-tag">k8s · containers · vms · data</span>
+          </div>
+          <p>
+            <code>zfs send | zfs recv</code> over wg3 replicates entire boot environments,
+            container images, VM disks, and <code>/srv</code> datasets to any node on the estate
+            &mdash; on-prem, cloud, or air-gapped. Kubernetes persistent volumes, PostgreSQL data,
+            Gitea repos, CI caches: all replicated as atomic ZFS snapshots. No rsync drift.
+            No incremental-backup corruption. Either side of the pipe can be TrueNAS, another
+            another node, or any ZFS host.
+          </p>
+          <p>
+            Fail over an entire site by activating the replicated boot environment on a standby
+            node. RPO is the snapshot interval (15 minutes for <code>/srv</code>, on every
+            APT transaction for the OS). RTO is a reboot.
+          </p>
+          <div class="power-example">
+            <span class="power-example-label">replication pipe</span>
+            <code>zfs send -R rpool/ROOT/default@snap | ssh node-dr zfs recv rpool/ROOT/default</code>
+          </div>
+        </div>
+
+        <!-- Per-dataset encryption -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#128274;</span>
+            <h3>Per-dataset encryption</h3>
+            <span class="power-tag">native zfs · tpm2 + tang sealed</span>
+          </div>
+          <p>
+            Each ZFS dataset carries its own encryption key. <code>rpool/ROOT/default</code>
+            is sealed against TPM2 PCRs <em>and</em> a tang server using Shamir secret sharing
+            (threshold 2). The node decrypts automatically on trusted hardware &mdash; and only
+            on trusted hardware. Swap the motherboard and the pool stays locked.
+          </p>
+          <p>
+            Tenant datasets can carry separate keys. Encrypt <code>rpool/srv/customer-a</code>
+            with a different passphrase than <code>rpool/srv/customer-b</code>. Destroy a key
+            and the data is cryptographically gone &mdash; no secure-erase required.
+            No LUKS layer beneath ZFS. No performance overhead from stacked crypto.
+          </p>
+          <div class="power-example">
+            <span class="power-example-label">key management</span>
+            <code>zfs create -o encryption=aes-256-gcm -o keylocation=prompt rpool/srv/tenant-a</code>
+          </div>
+        </div>
+
+        <!-- Automated snapshotting -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#128247;</span>
+            <h3>Automated data protection</h3>
+            <span class="power-tag">apt hooks · 15-min timer · count-based pruning</span>
+          </div>
+          <p>
+            Two automatic snapshot tracks run independently:
+          </p>
+          <ul style="font-size:0.88rem;color:var(--subtle);margin-bottom:0.75rem">
+            <li><strong>APT / dpkg hook</strong> &mdash; snapshots <code>rpool/ROOT/default</code>
+            before every package operation. Botched upgrade? Roll back in one command. The last
+            10 pre-upgrade states are always available.</li>
+            <li><strong>15-minute <code>/srv</code> timer</strong> &mdash; snapshots service data
+            every quarter-hour, keeping the last 4. Covers databases, git repos, container volumes,
+            anything under <code>/srv</code>.</li>
+          </ul>
+          <p>
+            No cron to configure. No backup agent to install. No NFS mount to a backup appliance.
+            The protection is in the filesystem.
+          </p>
+        </div>
+
+        <!-- Darksite + postinstall pipeline -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#128230;</span>
+            <h3>On-the-fly darksite builds &mdash; no internet required</h3>
+            <span class="power-tag">air-gap · zero-internet · custom payload</span>
+          </div>
+          <p>
+            The entire distribution is built from scratch on demand. Kernel modules, custom
+            packages, container images, Helm charts &mdash; the build process resolves, downloads,
+            and bundles everything automatically at build time. No pre-baked distribution to
+            maintain, no stale image to patch. Git is wonderful right up until you try to use
+            IaC tools with no internet connection. This makes that problem go away entirely.
+          </p>
+          <p>
+            The result is a fully self-contained darksite image tailored to any configuration &mdash;
+            à la carte. Drop packages, OCI images, and scripts into <code>darksite/</code> and
+            they ride along in the ISO. Every node gets the same bit-for-bit payload, with zero
+            internet access required at install time. Golden images for any role, any stack,
+            built and packaged in a single command. Useful for anyone who has wrestled with
+            Intune, offline Linux deployments, or disconnected edge environments and would rather
+            just burn a USB and walk away.
+          </p>
+          <div class="power-example">
+            <span class="power-example-label">structure</span>
+            <code>darksite/<br>&nbsp;&nbsp;packages/ &nbsp;# .deb files<br>&nbsp;&nbsp;images/ &nbsp;&nbsp;# container OCI tarballs<br>&nbsp;&nbsp;files/ &nbsp;&nbsp;&nbsp;# arbitrary assets<br>&nbsp;&nbsp;postinstall.sh</code>
+          </div>
+        </div>
+
+        <!-- CICD migration -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#128640;</span>
+            <h3>Migrate entire CI/CD pipelines. Change nothing.</h3>
+            <span class="power-tag">gitea · woodpecker · helm · k8s</span>
+          </div>
+          <p>
+            Move a Gitea + Woodpecker CI stack onto it by placing the container images and
+            Helm values files in <code>darksite/</code>. The pipeline runs identically &mdash;
+            same webhooks, same secrets (re-sealed against the new TPM), same Helm release names.
+            Kubernetes persistent volumes replicate over wg3. The migration is a
+            <code>zfs recv</code> away from being complete.
+          </p>
+          <p>
+            Developers don&rsquo;t change a single pipeline YAML. The WireGuard mesh gives
+            runners the same private IPs on the new hardware. Gitea sees the same hostname.
+            Registry mirrors are already in the darksite payload.
+          </p>
+        </div>
+
+        <!-- Ansible ready -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#129521;</span>
+            <h3>Ansible-ready. Your playbooks. Zero lock-in.</h3>
+            <span class="power-tag">ansible · helm · your playbooks · zero lock-in</span>
+          </div>
+          <p>
+            Ansible, Helm, kubectl, AWS CLI, gcloud, and Azure CLI are pre-installed on every
+            node. The WireGuard mesh is your inventory &mdash; every node has a stable, routable
+            management IP the moment it registers. Drop your playbooks into
+            <code>darksite/playbooks/</code> and call them from <code>postinstall.sh</code>.
+            No changes to your existing automation required.
+          </p>
+          <p>
+            Each node registers itself on first boot &mdash; hostname, IP addresses, hardware
+            profile, and role are all available to your playbooks as inventory variables. Your
+            automation runs on top of the platform, unmodified and unopinionated.
+          </p>
+        </div>
+
+        <!-- Self-healing + dedup -->
+        <div class="power-card">
+          <div class="power-head">
+            <span class="power-icon">&#129504;</span>
+            <h3>Self-healing. Deduplication. Done.</h3>
+            <span class="power-tag">zfs checksums · scrub · dedup · compression</span>
+          </div>
+          <p>
+            ZFS checksums every block on read and write. Silent data corruption is detected and
+            repaired automatically from a mirror or RAIDZ parity. A weekly scrub validates every
+            block on disk without downtime. No RAID controller firmware to trust.
+            No fsck on boot. No bitrot surprises six months later.
+          </p>
+          <p>
+            Block-level deduplication means identical container layers, VM base images, and
+            golden clones consume space <em>once</em>. LZ4 compression is on by default &mdash;
+            log files, database WAL, and source trees typically compress 3&ndash;5&times;,
+            effectively giving you more IOPS from the same hardware.
+          </p>
+        </div>
+
+      </div><!-- /.power-grid -->
+
+      <div class="callout pro" style="margin-top:1.5rem">
+        <strong>The hard stuff is done.</strong>
+        Boot environments. Encrypted ZFS on root. Four WireGuard planes, deterministically
+        addressed. Ansible-ready. Kubernetes CNI. Automated snapshots. Clevis seal.
+        Self-signed CA. Every node gets all of this in under 90 seconds from first power-on.
+        Your job is what runs on top.
+      </div>
+
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- ── Templates ─────────────────────────────────────────────────────────── -->
+    <section id="templates">
+      <div class="section-label">Node Templates</div>
+      <h2>A-la-carte infrastructure.</h2>
+      <p>
+        Every node has a template. Set <code>DEBZ_TEMPLATE=&lt;name&gt;</code> in the
+        answer file — or pick it in the TUI installer. The base OS is always identical: ZFS on
+        root, WireGuard, node_exporter. Templates install their own software on
+        first boot and self-register with the Cluster Manager so the dashboard manages them automatically.
+      </p>
+
+      <div class="tmpl-grid">
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:var(--accent)">&#9672;</div>
+          <h3>Cluster Manager</h3>
+          <div class="tmpl-sub">Control plane &middot; GNOME desktop &middot; WireGuard hub &middot; k8s bootstrap</div>
+          <p>WireGuard hub for all four planes, GNOME + Web UI dashboard, dnsmasq PXE/DNS, nginx enrollment endpoint, nftables. Installs onto the machine — the full control plane lives with the hardware.</p>
+          <div class="tmpl-pkgs">gnome &middot; wireguard &middot; dnsmasq &middot; nginx &middot; nftables</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#00ccff">&#9635;</div>
+          <h3>KVM</h3>
+          <div class="tmpl-sub">Hypervisor &middot; libvirt &middot; bridge networking &middot; OVMF UEFI</div>
+          <p>QEMU/KVM hypervisor with OVMF UEFI, libvirt bridge networking, and virt-manager. Runs golden image CoW clones as VMs. Spawn directly from the Web UI.</p>
+          <div class="tmpl-pkgs">qemu-kvm &middot; libvirt &middot; bridge-utils &middot; ovmf &middot; virt-manager</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#3399ff">&#9671;</div>
+          <h3>STORAGE</h3>
+          <div class="tmpl-sub">ZFS NAS/SAN &middot; NFS &middot; iSCSI &middot; metrics exporter</div>
+          <p>Dedicated ZFS storage node. NFS exports, iSCSI via tgt, Prometheus ZFS metrics. Snapshotted every 15 min, replicated over wg3 to any ZFS host.</p>
+          <div class="tmpl-pkgs">zfsutils &middot; nfs-kernel-server &middot; tgt &middot; prometheus</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:var(--muted)">&#11035;</div>
+          <h3>VDI</h3>
+          <div class="tmpl-sub">Streaming desktop &middot; SRT/HLS/WebRTC &middot; mediamtx &middot; NVIDIA opt.</div>
+          <p>Headless Wayland desktop streamed to any browser. mediamtx handles SRT ingest, HLS, and WebRTC. Optional NVIDIA nvenc for GPU encode.</p>
+          <div class="tmpl-pkgs">mutter &middot; mediamtx &middot; ffmpeg &middot; wf-recorder &middot; pipewire</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#e65c00">&#9670;</div>
+          <h3>PROXMOX</h3>
+          <div class="tmpl-sub">Proxmox VE on debz ZFS &middot; API token &middot; VMID 905</div>
+          <p>Installs <code>proxmox-ve</code> on the debz ZFS base. Generates a <code>root@pam!debz-manager</code> API token on first boot and registers with the Cluster Manager — dashboard deploys VMs to it automatically.</p>
+          <div class="tmpl-pkgs">proxmox-ve &middot; pve-manager &middot; ifupdown2 &middot; pveum</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#22c55e">&#9650;</div>
+          <h3>MONITORING</h3>
+          <div class="tmpl-sub">Prometheus &middot; Loki &middot; Grafana &middot; fleet dashboard &middot; VMID 907</div>
+          <p>The PLG stack. Prometheus scrapes node_exporter on every node, Loki collects logs from Promtail, Grafana shows a unified fleet dashboard — metrics and logs in one view.</p>
+          <div class="tmpl-pkgs">prometheus &middot; loki &middot; grafana &middot; node_exporter</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#818cf8">&#9660;</div>
+          <h3>LANDING</h3>
+          <div class="tmpl-sub">SFTP drop zone &middot; ZFS chroot per user &middot; quota &middot; VMID 908</div>
+          <p>Hardened SFTP-only drop zone. Each user gets a ZFS dataset with a quota and an OpenSSH chroot jail. No shell, no port forwarding. ZFS encryption on by default.</p>
+          <div class="tmpl-pkgs">openssh &middot; zfs &middot; acl &middot; node_exporter</div>
+        </div>
+        <div class="tmpl-card">
+          <div class="tmpl-glyph" style="color:#f59e0b">&#9632;</div>
+          <h3>LOAD BALANCER</h3>
+          <div class="tmpl-sub">HAProxy &middot; Keepalived VIP &middot; Kubernetes API HA &middot; VMID 909</div>
+          <p>HAProxy + Keepalived floating VIP for Kubernetes API HA. Backends added dynamically when k8s control-plane nodes register. VIP default: <code>10.100.10.200:6443</code>.</p>
+          <div class="tmpl-pkgs">haproxy &middot; keepalived &middot; node_exporter</div>
+        </div>
+      </div>
+      <p style="text-align:center">
+        <a href="docs/templates.html">Full template reference &rarr;</a>
+      </p>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- ── WireGuard ──────────────────────────────────────────────────────────── -->
+    <section id="wireguard">
+      <div class="section-label">Networking</div>
+      <h2>Four dedicated WireGuard planes.</h2>
+      <p>
+        Every debz cluster uses four encrypted WireGuard overlays &mdash; one per traffic class.
+        Blue fleet IPs derive deterministically: node 3 is always <code>10.7N.100.3</code>.
+        Green fleet uses <code>10.7N.200.N</code>. No DNS required &mdash; you always know the IP from index + color.
+        Live peer updates use <code>wg set</code> &mdash; no interface restart as nodes join.
+      </p>
+
+      <div class="wg-planes-home">
+        <table>
+          <thead>
+            <tr>
+              <th>Plane</th>
+              <th>Network</th>
+              <th>Port</th>
+              <th>Purpose</th>
+              <th>Key services</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>wg0</code></td>
+              <td><code>10.77.0.0/16</code></td>
+              <td>:51820</td>
+              <td>Enrollment</td>
+              <td class="wg-plane-note">New node enrollment &middot; hub.env distribution &middot; unreliable on some hardware &mdash; never bind services here</td>
+            </tr>
+            <tr>
+              <td><code>wg1</code></td>
+              <td><code>10.78.0.0/16</code></td>
+              <td>:51821</td>
+              <td>Management</td>
+              <td>Cluster Manager binds here &middot; SSH &middot; Web UI &middot; admin tools &middot; services bind here</td>
+            </tr>
+            <tr>
+              <td><code>wg2</code></td>
+              <td><code>10.79.0.0/16</code></td>
+              <td>:51822</td>
+              <td>Kubernetes</td>
+              <td>kubelet <code>--node-ip</code> &middot; Cilium CNI &middot; kubeadm advertise &middot; Hubble</td>
+            </tr>
+            <tr>
+              <td><code>wg3</code></td>
+              <td><code>10.80.0.0/16</code></td>
+              <td>:51823</td>
+              <td>Storage</td>
+              <td>NFS exports &middot; iSCSI &middot; ZFS <code>send/recv</code> replication</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="text-align:center">
+        <a href="docs/wireguard.html">WireGuard planes reference &rarr;</a>
+      </p>
+    </section>
+
+    <hr class="divider"/>
+    </div><!-- /#view-capabilities -->
+
+    <div class="page-view" id="view-pipeline">
+    <!-- ── Golden pipeline ───────────────────────────────────────────────────── -->
+    <section id="pipeline">
+      <div class="section-label">Golden Image Pipeline</div>
+      <h2>From ISO to cluster in minutes.</h2>
+      <p>
+        Build a fully installed qcow2 golden image once per template, then stamp CoW thin-clones
+        in seconds &mdash; each clone is ~1 MB until written. <code>debz-stamp-identity</code>
+        injects a unique hostname, machine identity, and network configuration into each clone.
+      </p>
+
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-num">01</div>
+          <div class="pipeline-body">
+            <h4>Build a golden image</h4>
+            <p>Boots the live ISO headlessly in QEMU with a DEBZ-SEED FAT32 disk containing <code>answers.env</code>.
+            Full unattended install runs, <code>debz-apply-role</code> configures the template, system shuts down cleanly,
+            qcow2 exported to <code>/var/lib/debz/golden/golden-kvm.qcow2</code>.</p>
+            <pre style="margin-top:0.5rem;margin-bottom:0"><code><span class="c"># headless QEMU install → qcow2 golden image</span>
+<span class="k">debz-install-target</span> --config answers-kvm.env
+<span class="k">debz-install-target</span> --config answers-master.env</code></pre>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">02</div>
+          <div class="pipeline-body">
+            <h4>Stamp CoW clones</h4>
+            <p><code>qemu-img create -b golden-kvm.qcow2 -f qcow2 kvm-01.qcow2</code> per clone. Then
+            <code>debz-stamp-identity</code> mounts via <code>qemu-nbd</code>, imports the ZFS pool,
+            and writes a unique hostname, machine identity, and network configuration into each clone. Each clone starts at ~1 MB.</p>
+            <pre style="margin-top:0.5rem;margin-bottom:0"><code><span class="c"># stamp 8 CoW clones with unique identities</span>
+<span class="k">debz-stamp-identity</span> --base golden-kvm.qcow2 \
+  --count 8 --hostname-base kvm</code></pre>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">03</div>
+          <div class="pipeline-body">
+            <h4>Spawn VMs</h4>
+            <p>Boot stamped clones as libvirt VMs locally or as Proxmox VMs over SSH.
+            Nodes boot, register with the Cluster Manager, configure their network planes,
+            and apply their role template &mdash; fully operational within ~90 seconds of first boot.</p>
+            <pre style="margin-top:0.5rem;margin-bottom:0"><code><span class="c"># upload and boot on Proxmox via the Web UI</span>
+<span class="c"># or boot locally with libvirt — nodes join automatically</span>
+<span class="k">virsh</span> start kvm-01</code></pre>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">04</div>
+          <div class="pipeline-body">
+            <h4>Cluster joins automatically</h4>
+            <p>Each new node registers itself with the Cluster Manager, reporting its hostname,
+            IP addresses, hardware profile, and role. The Cluster Manager issues its network
+            identity and adds it to the cluster — no manual steps required.</p>
+            <pre style="margin-top:0.5rem;margin-bottom:0"><code><span class="c"># Watch nodes join in real time</span>
+<span class="k">journalctl</span> -fu debz-autobootstrap</code></pre>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">05</div>
+          <div class="pipeline-body">
+            <h4>Build for any environment &mdash; including ones with no internet</h4>
+            <p>
+              Golden images are built à la carte. The entire distribution is assembled from scratch
+              on demand &mdash; kernel modules, packages, container images, Helm charts &mdash; all
+              resolved and bundled automatically. Drop anything into <code>darksite/</code> and it
+              rides along in the image. Git is wonderful right up until you need IaC tools with no
+              internet connection. This makes that go away. Useful for air-gapped data centres,
+              edge deployments, or anyone who has wrestled with offline Intune or disconnected Linux
+              environments and would rather just burn a USB and walk away.
+            </p>
+            <pre style="margin-top:0.5rem;margin-bottom:0"><code><span class="c"># build a fully offline golden image with custom payload</span>
+<span class="c"># darksite/ packages + images + postinstall.sh bundled automatically</span>
+<span class="k">./deploy.sh</span> golden TEMPLATE=kvm</code></pre>
+          </div>
+        </div>
+      </div>
+      <p style="text-align:center;margin-top:1rem">
+        <a href="docs/golden-images.html">Golden images reference &rarr;</a>
+        &nbsp;&middot;&nbsp;
+        <a href="docs/cluster.html">Cluster bootstrap reference &rarr;</a>
+      </p>
+    </section>
+
+    <hr class="divider"/>
+    </div><!-- /#view-pipeline -->
+
+    <div class="page-view" id="view-screenshots">
+    <!-- ── Screenshots ───────────────────────────────────────────────────────── -->
+    <section>
+      <div class="section-label">Web UI</div>
+      <h1>Screenshots</h1>
+      <p class="page-subtitle">The debz Web UI runs on the live ISO and on every installed node. Boot from USB, open a browser, and you have full control — no separate management server, no agents to install, no cloud dependency.</p>
+
+      <!-- ── Cluster & Deploy ─────────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Cluster &amp; Deploy</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        debz treats a cluster as a first-class object. You design it visually — assigning node roles, storage profiles, and inter-node WireGuard links — then deploy the whole thing in a single operation. Every node is provisioned from the same ISO; the Cluster Manager stores the desired state and continuously reconciles what is actually running against what should be running.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        The Service Designer lets you define workloads as ZFS datasets. Choose a runtime — systemd, systemd-nspawn container, or Podman — set the image, replica count, target nodes, and replication destinations. debz creates the dataset on the appropriate node and starts the service. Because the workload lives in a ZFS dataset, you can snapshot it, clone it for staging, or replicate it to another host or a cloud provider with a single <code>zfs send | ssh … zfs recv</code> pipeline. Cloud Deploy extends this to VMs on Hetzner, AWS, or other providers — they join the WireGuard mesh and become full cluster members.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-cluster-deploy.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-cluster-deploy.png" alt="Cluster Deploy"/>
+          <div class="ss-label">Cluster Deploy</div>
+        </a>
+        <a href="screenshots/debz-cluster-designer.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-cluster-designer.png" alt="Cluster Designer"/>
+          <div class="ss-label">Cluster Designer</div>
+        </a>
+        <a href="screenshots/debz-service-designer.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-service-designer.png" alt="Service Designer"/>
+          <div class="ss-label">Service Designer</div>
+        </a>
+        <a href="screenshots/debz-cloud-deploy.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-cloud-deploy.png" alt="Cloud Deploy"/>
+          <div class="ss-label">Cloud Deploy</div>
+        </a>
+      </div>
+
+      <!-- ── Node Management ──────────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Node Management</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        Every node in the cluster registers itself with the Cluster Manager, reporting its hostname, IP addresses, WireGuard public keys, hardware profile, and current role. The Nodes view shows live status for the entire fleet — online, offline, last seen, cluster membership — so you always know what you have and where it is.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        The Spawn view is where the "cattle not pets" philosophy becomes concrete. From here you can launch a KVM virtual machine, a systemd-nspawn container, a Podman workload, or a bare ZFS micro-filesystem — all on any node in the cluster. Existing workloads can be cloned instantly using ZFS copy-on-write: spin up a staging clone of production in seconds, test a change, then destroy it. Golden Images lets you snapshot a fully configured node root filesystem and publish it as a base image; new nodes clone from it for a consistent, reproducible starting point. The Kubernetes view gives direct access to workload orchestration across the fleet.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-nodes.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-nodes.png" alt="Nodes"/>
+          <div class="ss-label">Nodes</div>
+        </a>
+        <a href="screenshots/debz-cluster-deploy.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-cluster-deploy.png" alt="Cluster Deploy"/>
+          <div class="ss-label">Cluster Deploy</div>
+        </a>
+        <a href="screenshots/debz-kubernetes.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-kubernetes.png" alt="Kubernetes"/>
+          <div class="ss-label">Kubernetes</div>
+        </a>
+        <a href="screenshots/debz-golden-images.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-golden-images.png" alt="Golden Images"/>
+          <div class="ss-label">Golden Images</div>
+        </a>
+        <a href="screenshots/debz-spawn.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-spawn.png" alt="Spawn / Clone"/>
+          <div class="ss-label">Spawn / Clone</div>
+        </a>
+      </div>
+
+      <!-- ── Network & Security ───────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Network &amp; Security</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        debz ships with four dedicated WireGuard planes baked in at install time: management, storage, WAN, and cluster traffic are intentionally separated so that storage replication never competes with management access and cluster east-west traffic stays off the public internet. Keys are generated on each node, and the Cluster Manager collects and distributes public keys so every peer relationship is established automatically.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        The Firewall Designer lets you write rules against named groups of hosts and services rather than raw IP addresses. Rules compile to nftables and are distributed cluster-wide. The Credentials view manages SSH keys, API tokens, WireGuard keypairs, and MOK certificates in one place — stored encrypted in the state database and distributed only to the nodes that need them. Per-node network configuration (bonds, bridges, VLANs, static routes) is applied live without a reboot.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-wireguard.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-wireguard.png" alt="WireGuard Mesh"/>
+          <div class="ss-label">WireGuard Mesh</div>
+        </a>
+        <a href="screenshots/debz-network.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-network.png" alt="Network"/>
+          <div class="ss-label">Network</div>
+        </a>
+        <a href="screenshots/debz-firewall-designer.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-firewall-designer.png" alt="Firewall Designer"/>
+          <div class="ss-label">Firewall Designer</div>
+        </a>
+        <a href="screenshots/debz-credentials.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-credentials.png" alt="Credentials"/>
+          <div class="ss-label">Credentials</div>
+        </a>
+      </div>
+
+      <!-- ── Storage ──────────────────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Storage</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        ZFS is the storage primitive for everything in debz — not just the OS root, but every workload, every VM disk, every container filesystem. The Pool Designer walks you through selecting drives, choosing a RAID profile (mirror, RAIDZ-1/2/3, dRAID), and previewing usable capacity and fault tolerance before committing. Pools are provisioned with sensible defaults: <code>ashift=12</code>, <code>autotrim=on</code>, <code>compression=lz4</code>, <code>acltype=posixacl</code>.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        The ZFS view gives you a live look at every pool and dataset across the fleet — capacity, compression ratios, scrub state, snapshot counts, and replication lag. Virtual machines run on ZFS-backed volumes so they inherit copy-on-write snapshots automatically: roll back a VM in seconds, clone it for testing, or send it to a remote node for live migration. Snapshots before every <code>apt upgrade</code> happen automatically via the APT hook baked into the image.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-pool-designer.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-pool-designer.png" alt="Pool Designer"/>
+          <div class="ss-label">Pool Designer</div>
+        </a>
+        <a href="screenshots/debz-zfs.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-zfs.png" alt="ZFS"/>
+          <div class="ss-label">ZFS</div>
+        </a>
+        <a href="screenshots/debz-vms.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-vms.png" alt="Virtual Machines"/>
+          <div class="ss-label">Virtual Machines</div>
+        </a>
+      </div>
+
+      <!-- ── Monitoring & Ops ─────────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Monitoring &amp; Ops</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        The Dashboard gives you an at-a-glance view of the entire infrastructure: node health, cluster membership, storage utilization, active alerts, and recent events — all on one screen. It pulls live data from the state database on the Cluster Manager, which the reconciliation daemon keeps current by polling every registered node every 30 seconds.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        The Audit Trail records every action taken through the web UI — who triggered it, when, what changed, and whether it succeeded. This gives you a clear picture of infrastructure history for compliance reviews, post-incident analysis, or just understanding what changed before things went sideways. The Logs view streams and searches journal output from any node or service, filtered by host, unit, severity, or time range.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-dashboard.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-dashboard.png" alt="Dashboard"/>
+          <div class="ss-label">Dashboard</div>
+        </a>
+        <a href="screenshots/debz-logs.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-logs.png" alt="Logs"/>
+          <div class="ss-label">Logs</div>
+        </a>
+        <a href="screenshots/debz-audit-trail.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-audit-trail.png" alt="Audit Trail"/>
+          <div class="ss-label">Audit Trail</div>
+        </a>
+      </div>
+
+      <!-- ── Install & Live ───────────────────────────────────────────────── -->
+      <div class="section-label" style="margin-top:2rem;margin-bottom:0.5rem">Install &amp; Live</div>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.4rem">
+        The live ISO boots into a full GNOME desktop with the debz web UI already open in Firefox. You can design your cluster topology, configure networking, build your ZFS pool layout, and browse the full interface — all before committing a single byte to disk. The live session runs an ephemeral SQLite database in RAM; anything you configure (cluster designs, pool layouts, service definitions) can be exported and imported into the installed Cluster Manager so your work carries over.
+      </p>
+      <p style="color:var(--subtle);line-height:1.7;margin-bottom:0.75rem">
+        When you are ready to install, the browser-based installer guides you through disk selection, ZFS pool configuration, hostname, network setup, and user creation. The whole process takes two to five minutes on typical hardware. The system powers off cleanly when done — remove the USB drive, power back on, and your node is running. No partitioning spreadsheets, no Kickstart files, no post-install scripts to remember.
+      </p>
+      <div class="ss-grid">
+        <a href="screenshots/debz-install.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-install.png" alt="Node Installer"/>
+          <div class="ss-label">Node Installer</div>
+        </a>
+        <a href="screenshots/debz-live-session.png" target="_blank" class="ss-card">
+          <img src="screenshots/debz-live-session.png" alt="Live Session"/>
+          <div class="ss-label">Live Session</div>
+        </a>
+      </div>
+    </section>
+    </div><!-- /#view-screenshots -->
+
+    <div class="page-view" id="view-howworks">
+    <section id="how-it-works">
+  <div class="section-label">How It Works</div>
+  <h2>Two editions. Both start with a USB key or image.</h2>
+  <p>Burn the ISO to a USB drive or attach it as a disk image &mdash; that&rsquo;s the only manual step. Everything after that is automatic.</p>
+
+  <div class="how-modes">
+    <div class="how-mode">
+      <div class="how-mode-num" style="background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.3)">Free</div>
+      <h3>Live &amp; Standalone</h3>
+      <p>
+        Boot from USB into a full Debian 13 GNOME desktop — completely ephemeral.
+        Nothing touches the machine&rsquo;s disk. Browse, test tools, use it as a
+        throwaway environment. Pull the USB out and the machine is exactly as you found it.
+      </p>
+      <p>
+        When you&rsquo;re ready to install permanently, the guided installer sets up
+        ZFS on root with ZFSBootMenu boot environments in about 90 seconds.
+        Pick standalone mode — hostname, user, password, done.
+      </p>
+      <p>
+        From any installed node you can also spawn VMs and containers to attached
+        KVM hosts or Proxmox servers, run Salt states and Ansible playbooks locally,
+        and install full server roles: storage node, VDI host, KVM hypervisor.
+      </p>
+      <ul style="margin:0.75rem 0 0 1.25rem;color:var(--muted);font-size:0.9rem;line-height:1.8">
+        <li>Ephemeral live desktop &mdash; GNOME, dark mode, Firefox, terminal</li>
+        <li>ZFS on root installer &mdash; encrypted or plain, 90-second install</li>
+        <li>Salt + Ansible single-node (masterless)</li>
+        <li>Spawn VMs to KVM / Proxmox from live session</li>
+        <li>In-place role install: storage, VDI, KVM hypervisor</li>
+        <li>Offline / air-gap ready &mdash; embedded darksite APT mirror</li>
+        <li>Simple web UI: install wizard, ZFS health, snapshots, logs</li>
+      </ul>
+    </div>
+
+    <div class="how-mode" style="border-color:rgba(96,165,250,0.3)">
+      <div class="how-mode-num" style="background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.3)">Pro</div>
+      <h3>Cluster Provisioning</h3>
+      <p>
+        Deploy the first node as a <strong>Cluster Manager</strong> — it generates all WireGuard keys,
+        starts Salt master, initialises the state database, and serves a hub configuration
+        file on the LAN. Every subsequent node just boots and joins automatically.
+      </p>
+      <p>
+        No manual key exchange. No bootstrap problem. Joining nodes fetch the cluster
+        config over plain LAN HTTP before WireGuard starts — deterministic IPs derived
+        from LAN addresses, no pre-registration required.
+      </p>
+      <p>
+        The full web UI manages the fleet: node inventory, WireGuard mesh health,
+        golden image pipeline, cluster deploy, fleet-wide Ansible, and an audit trail.
+        Scale from 1 node to 50 in the same flow.
+      </p>
+      <ul style="margin:0.75rem 0 0 1.25rem;color:var(--muted);font-size:0.9rem;line-height:1.8">
+        <li>Everything in Free</li>
+        <li>3 installer modes: standalone / cluster-manager / join</li>
+        <li>4-plane WireGuard mesh (mgmt, k8s, storage, exit)</li>
+        <li>SQLite state.db &mdash; live node inventory, auto-updated every 30s</li>
+        <li>Fleet Ansible &mdash; auto-populated inventory from state.db</li>
+        <li>Golden image pipeline &mdash; snapshot, clone, stamp, spawn</li>
+        <li>Full web UI &mdash; nodes, WireGuard, golden images, cluster deploy</li>
+        <li>KVM + Proxmox + etcd + k8s worker + LB firstboot scripts</li>
+        <li>Internal DNS API, cert issuance, audit trail</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="compat-table" style="margin-top:2rem">
+    <div class="compat-label">Platform Compatibility</div>
+    <div class="compat-grid">
+      <div class="compat-row compat-header">
+        <div>Target</div>
+        <div>Image Type</div>
+        <div>Live Boot</div>
+        <div>Install</div>
+        <div>Golden Clone</div>
+      </div>
+      <div class="compat-row">
+        <div>Bare metal</div>
+        <div><span class="badge">ISO</span> <span class="badge">USB</span></div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+      <div class="compat-row">
+        <div>Proxmox KVM</div>
+        <div><span class="badge">ISO</span></div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+      <div class="compat-row">
+        <div>QEMU / KVM</div>
+        <div><span class="badge">ISO</span> <span class="badge">QCOW2</span></div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+      <div class="compat-row">
+        <div>VMware / ESXi</div>
+        <div><span class="badge">ISO</span> <span class="badge">VMDK</span></div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+      <div class="compat-row">
+        <div>AWS EC2</div>
+        <div><span class="badge">AMI</span></div>
+        <div class="compat-no">&mdash;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+      <div class="compat-row">
+        <div>Firecracker microVM</div>
+        <div><span class="badge">RAW</span></div>
+        <div class="compat-no">&mdash;</div>
+        <div class="compat-yes">&#10003;</div>
+        <div class="compat-yes">&#10003;</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top:2rem;text-align:center">
+    <a href="docs/install-guide.html">Full installation reference &rarr;</a>
+  </p>
+</section>
+    <hr class="divider"/>
+    </div><!-- /#view-howworks -->
+
+    <div class="page-view" id="view-storage">
+    <!-- ── ZFS layout ─────────────────────────────────────────────────────────── -->
+    <section id="zfs">
+      <div class="section-label">Storage</div>
+      <h2>ZFS — and why it changes everything.</h2>
+
+      <p>
+        Most operating systems treat storage like a filing cabinet: files go in, files come out,
+        and when something goes wrong you find out after the fact &mdash; usually at the worst
+        possible moment. ZFS is fundamentally different. It organises storage as a tree of
+        <em>datasets</em> &mdash; each one an independent, live volume with its own settings,
+        its own snapshot history, and optionally its own encryption key. Every write is checksummed.
+        Every read is verified. Silent corruption is not possible.
+      </p>
+
+      <p>
+        debz installs every node with the same fixed dataset layout. This is intentional:
+        everything else &mdash; snapshots, boot environments, replication, per-app encryption &mdash;
+        builds predictably on top of it.
+      </p>
+
+      <div class="zfs-layout">
+        <div class="zl-row zl-header">
+          <div class="zl-name">Dataset</div>
+          <div class="zl-mount">Mounts at</div>
+          <div class="zl-why">Why it&rsquo;s its own dataset</div>
+        </div>
+        <div class="zl-row">
+          <div class="zl-name"><code>rpool/ROOT/&lt;hostname&gt;</code></div>
+          <div class="zl-mount"><code>/</code></div>
+          <div class="zl-why">The entire OS lives here. This is the <strong>boot environment</strong> — snapshot it, roll it back, boot a previous version. A bad upgrade is a 30-second reboot, not a rebuild.</div>
+        </div>
+        <div class="zl-row">
+          <div class="zl-name"><code>rpool/home</code></div>
+          <div class="zl-mount"><code>/home</code></div>
+          <div class="zl-why">User files are separate from the OS. Roll back the OS after a bad upgrade and your home directory is untouched.</div>
+        </div>
+        <div class="zl-row">
+          <div class="zl-name"><code>rpool/srv</code></div>
+          <div class="zl-mount"><code>/srv</code></div>
+          <div class="zl-why">Application and service data. Snapshotted automatically every 15 minutes. Apps store databases, media, and state here. Each application can get its own sub-dataset &mdash; its own encryption key, its own quota, independently snapshotted and replicated.</div>
+        </div>
+        <div class="zl-row">
+          <div class="zl-name"><code>rpool/var/lib</code></div>
+          <div class="zl-mount"><code>/var/lib</code></div>
+          <div class="zl-why">Container images, database runtime state, package manager data. Kept separate so rolling back the OS doesn&rsquo;t wipe your Docker volumes or Kubernetes persistent data.</div>
+        </div>
+        <div class="zl-row">
+          <div class="zl-name"><code>rpool/var/log</code></div>
+          <div class="zl-mount"><code>/var/log</code></div>
+          <div class="zl-why">Logs persist across OS rollbacks. After you roll back, you can still read the logs from before the rollback to understand what went wrong.</div>
+        </div>
+      </div>
+
+      <div class="callout info" style="margin-top:1.5rem">
+        <strong>Every application gets its own slice.</strong>
+        A Postgres database, a git server, and a media library can each live in
+        <code>rpool/srv/postgres</code>, <code>rpool/srv/gitea</code>, and <code>rpool/srv/media</code>
+        — each with a separate encryption key, its own snapshot schedule, and its own size quota.
+        Encrypt one tenant&rsquo;s data independently from another&rsquo;s.
+        Replicate only the database to a backup node. Delete a dataset and the data is
+        cryptographically gone — no orphaned files, no forgotten mounts.
+      </div>
+
+      <h3 style="margin-top:2rem">Boot environments &mdash; your undo button for the whole OS.</h3>
+      <p>
+        Think of a boot environment as a save point for the entire operating system.
+        Before every upgrade, debz creates one automatically. If the upgrade breaks something,
+        you reboot, pick the previous environment from the boot menu, and you&rsquo;re running
+        the old system in 30 seconds &mdash; with zero data loss, because your home directories,
+        application data, and container volumes live in separate datasets that are never rolled back.
+      </p>
+
+      <div class="zl-be-example">
+        <div class="zl-be-row"><span class="zl-be-cmd">debz-be list</span><span class="zl-be-desc">— see all available OS snapshots you can boot</span></div>
+        <div class="zl-be-row"><span class="zl-be-cmd">debz-be create pre-upgrade</span><span class="zl-be-desc">— save the current OS state before you change anything</span></div>
+        <div class="zl-be-row"><span class="zl-be-cmd">debz-upgrade</span><span class="zl-be-desc">— auto-snapshots first, then upgrades; safe to run any time</span></div>
+        <div class="zl-be-row"><span class="zl-be-cmd">debz-be rollback</span><span class="zl-be-desc">— undo the last upgrade; reboot into the previous OS</span></div>
+      </div>
+
+      <p style="text-align:center;margin-top:1.5rem">
+        <a href="docs/zfs-layout.html">Full ZFS dataset reference &rarr;</a>
+        &nbsp;&middot;&nbsp;
+        <a href="docs/boot-environments.html">Boot environments guide &rarr;</a>
+      </p>
+    </section>
+
+    <hr class="divider"/>
+    </div><!-- /#view-storage -->
+
+    <div class="page-view" id="view-compare">
+    <!-- ── Compare ───────────────────────────────────────────────────────────── -->
+    <section id="compare">
+      <div class="section-label">Comparison</div>
+      <h2>How debz fits in.</h2>
+      <p>
+        It targets teams that live in Debian and want ZFS guarantees, overlay networking,
+        cluster management, and a golden image pipeline without stitching together five separate tools.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th class="highlight">debz</th>
+              <th>Ubuntu + ZFS</th>
+              <th>TrueNAS Scale</th>
+              <th>Proxmox VE</th>
+              <th>Manual Debian</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>General-purpose host OS</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="yes">&#10003;</td>
+              <td class="no">NAS only</td>
+              <td class="no">Hypervisor only</td>
+              <td class="yes">&#10003;</td>
+            </tr>
+            <tr>
+              <td>ZFS on root (enforced)</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="partial">Optional</td>
+              <td class="yes">&#10003;</td>
+              <td class="yes">&#10003;</td>
+              <td class="partial">Manual</td>
+            </tr>
+            <tr>
+              <td>ZFSBootMenu boot environments</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007; (zsys, abandoned)</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="partial">Manual</td>
+            </tr>
+            <tr>
+              <td>APT snapshot hooks</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="partial">Partial (zsys)</td>
+              <td class="no">N/A</td>
+              <td class="no">N/A</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Offline / air-gap installer</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Secure Boot + MOK auto-sign</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="partial">Partial</td>
+              <td class="no">&#10007;</td>
+              <td class="partial">Partial</td>
+              <td class="partial">Manual</td>
+            </tr>
+            <tr>
+              <td>Four WireGuard planes built-in</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Ansible-ready (pre-installed)</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Kubernetes on ZFS (wg2)</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="partial">External</td>
+              <td class="no">&#10007;</td>
+              <td class="partial">External</td>
+              <td class="partial">Manual</td>
+            </tr>
+            <tr>
+              <td>Golden image pipeline (CoW)</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="partial">Partial</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Browser management UI</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="yes">&#10003;</td>
+              <td class="yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>eBPF tooling pre-installed</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>VDI streaming (SRT/HLS/WebRTC)</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+              <td class="no">&#10007;</td>
+            </tr>
+            <tr>
+              <td>Debian base</td>
+              <td class="col-debz yes">&#10003;</td>
+              <td class="no">Ubuntu</td>
+              <td class="yes">&#10003;</td>
+              <td class="yes">&#10003;</td>
+              <td class="yes">&#10003;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── What it engineers away ──────────────────────────────────────────── -->
+    <section id="replaces">
+      <div class="section-label">What It Engineers Away</div>
+      <h2>Tools you probably don't need to wire together anymore.</h2>
+      <p>
+        debz isn't competing with your stack — it doesn't care what runs on the node once
+        it's handed off. Its entire job is to conjure hardware from nothing: burn, plug in,
+        walk away. The node comes up provisioned, meshed, and observable. Everything
+        after that is yours. Your CI/CD, your Terraform, your Kubernetes, your monitoring —
+        none of it changes. <strong>Zero impact on existing sites.</strong>
+      </p>
+      <p>
+        That said, a surprisingly large number of tools quietly become optional once debz is in the picture.
+        Some of them cost serious money. Most of them are just a config file with a web UI stapled on.
+      </p>
+
+      <div class="replaces-grid">
+
+        <div class="replaces-card">
+          <h4>Tailscale / NetBird / ZeroTier</h4>
+          <p>
+            A WireGuard key, a CIDR block, and a coordination endpoint — that's the whole product.
+            debz ships four WireGuard planes on every node with deterministic addressing, automatic
+            key distribution during cluster bootstrap, and zero dependency on any external coordination
+            service. No SaaS account, no per-seat pricing, no phone home. The mesh is yours.
+          </p>
+          <div class="replaces-note">Tailscale still works fine on debz nodes if your org already uses it.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Splunk / Datadog / New Relic</h4>
+          <p>
+            Observability platforms that charge by ingestion volume for the privilege of indexing
+            your own logs. debz ships eBPF tooling (bpftrace, bcc) pre-installed on every node —
+            kernel-level tracing, syscall visibility, network flows, without an agent, without a
+            pipeline, and without a bill that scales with how much you want to see. Ship logs
+            wherever you like; the node doesn't care.
+          </p>
+          <div class="replaces-note">Datadog/Splunk agents run fine on debz nodes. The eBPF layer is just already there.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Packer</h4>
+          <p>
+            Packer builds machine images by booting a VM, running a provisioner, and
+            snapshotting the result. debz does this natively via ZFS CoW — snapshot a running
+            boot environment, clone it, and you have an immutable golden image. No template
+            files, no plugin chain, no build time. The image already exists; it's just a dataset.
+          </p>
+          <div class="replaces-note">Packer can target a debz node just like any other if you prefer it.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Portworx / OpenEBS / Longhorn</h4>
+          <p>
+            Kubernetes persistent volume solutions that add a storage layer on top of whatever
+            the node already has. debz nodes present ZFS datasets directly as PVs — snapshots,
+            encryption, <code>zfs send/recv</code> replication, and cloning come with the
+            filesystem. No storage operator to install, no separate licensing tier for enterprise
+            features that should have been free.
+          </p>
+          <div class="replaces-note">Works alongside any CSI driver if your cluster already uses one.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Veeam / Rubrik / Commvault</h4>
+          <p>
+            Enterprise backup platforms that sell you a complex agent-based pipeline to do what
+            <code>zfs send | ssh target zfs recv</code> already does — atomically, at the
+            block level, incrementally, with no application quiescing required. Sanoid handles
+            snapshot retention policy. The replication is the backup. No agents, no appliance,
+            no annual true-up.
+          </p>
+          <div class="replaces-note">Existing backup agents run fine on debz nodes if your org mandates them.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Terraform (bare-metal bootstrap)</h4>
+          <p>
+            Terraform excels at cloud infrastructure but has historically needed external help
+            to bootstrap physical hardware: IPMI modules, MaaS providers, custom remote-exec
+            provisioners. debz handles that layer directly — burn a USB or attach a seed disk,
+            and the node provisions itself. Terraform picks up the handoff and manages everything
+            above the OS line from there, exactly as before.
+          </p>
+          <div class="replaces-note">debz and Terraform are complementary. Use both, or neither.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>MaaS / Cobbler / Foreman</h4>
+          <p>
+            PXE provisioning systems require a DHCP server, a TFTP server, network boot
+            infrastructure, and ongoing maintenance. debz provisions from a USB drive or a
+            small seed disk image — no network changes, no DHCP reservations, no PXE stack
+            to maintain. Plug it in, power on, walk away.
+          </p>
+          <div class="replaces-note">No DHCP or network infrastructure changes required.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Puppet Enterprise / Chef Automate</h4>
+          <p>
+            Configuration management platforms that charge enterprise licensing fees for a
+            server and a web UI on top of an open-source engine. debz is Ansible-ready out
+            of the box — Ansible, Helm, and kubectl are pre-installed on every node. Bring
+            your own playbooks. No license server, no per-node fee, no lock-in.
+          </p>
+          <div class="replaces-note">Ansible, Puppet, Chef, and any other automation tool work on debz nodes — unmodified.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Kickstart / Preseed / cloud-init</h4>
+          <p>
+            First-boot configuration systems. debz's <code>answers.env</code> seed disk
+            is the same idea, simpler — a FAT32 volume with a single env file. No XML,
+            no YAML anchors, no cloud metadata service required. cloud-init still works fine
+            on any node debz installs if your pipeline depends on it.
+          </p>
+          <div class="replaces-note">cloud-init runs fine on debz-provisioned nodes if your stack uses it.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>HashiCorp Vault (node identity)</h4>
+          <p>
+            Vault solves secret distribution in part because nodes have no built-in identity.
+            Every debz node gets a unique WireGuard keypair, machine-id, and hostname at
+            install time — identity is structural, not bolted on. The WireGuard mesh is
+            the trust boundary. Vault still makes sense for application secrets; it just
+            doesn't need to solve node identity too.
+          </p>
+          <div class="replaces-note">Vault agents run fine on debz nodes for app-level secrets.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Custom ZFS bootstrap scripts</h4>
+          <p>
+            Every team that runs ZFS on root has a sprawling bootstrap script — partition the
+            disk, create the pools, set properties, debootstrap, configure GRUB, generate
+            initramfs, pray. debz encapsulates all of that in a tested, reproducible installer
+            that produces the same pool layout every time. ZFSBootMenu, APT snapshot hooks,
+            and Secure Boot signing are included — not left as an exercise for the reader.
+          </p>
+          <div class="replaces-note">The pool layout is documented and fixed. No surprises between nodes.</div>
+        </div>
+
+        <div class="replaces-card">
+          <h4>Vagrant</h4>
+          <p>
+            Vagrant spins up local dev VMs by wrapping a hypervisor and a box image with a
+            Ruby DSL. A debz golden image clone takes under a second — CoW snapshot, new
+            hostname, new machine-id, unique WireGuard identity. No Vagrantfile, no box
+            registry, no provider plugin. The "box" is a ZFS dataset.
+          </p>
+          <div class="replaces-note">Vagrant still works for teams that prefer the workflow.</div>
+        </div>
+
+      </div>
+
+      <div class="replaces-footer">
+        <p>
+          <strong>The boundary is sharp:</strong> debz spawns hardware and hands it off. Full stop.
+          It doesn't manage your applications, touch your pipelines, or know anything about what
+          runs above the OS. Jenkins, GitLab CI, ArgoCD, your existing Ansible playbooks —
+          all of it works exactly as before. The node just has a dramatically better foundation
+          underneath, and you didn't have to pay twelve separate vendors to get there.
+        </p>
+      </div>
+    </section>
+
+    </div><!-- /#view-compare -->
+
+    <div class="page-view" id="view-docs">
+    <!-- ── Docs hub ───────────────────────────────────────────────────────────── -->
+    <section>
+      <div class="section-label">Reference</div>
+      <h1>Documentation</h1>
+      <p class="page-subtitle">Everything you need to know about deploying, operating, and extending the platform.</p>
+
+      <div class="section-label" style="margin-top:1.5rem;margin-bottom:0.75rem">Getting started</div>
+      <div class="wiki-grid">
+        <a href="docs/install-guide.html" class="wiki-card">
+          <h4>Installation Guide</h4>
+          <p>Two deployment modes — ephemeral live desktop and permanent node provisioning.</p>
+        </a>
+        <a href="docs/templates.html" class="wiki-card">
+          <h4>Node Templates</h4>
+          <p>Desktop, Server, KVM, Kubernetes, Storage — what each role installs and why.</p>
+        </a>
+      </div>
+
+      <div class="section-label" style="margin-top:1.25rem;margin-bottom:0.75rem">Storage &amp; boot</div>
+      <div class="wiki-grid">
+        <a href="docs/zfs-layout.html" class="wiki-card">
+          <h4>ZFS Dataset Layout</h4>
+          <p>The fixed dataset hierarchy, why each decision was made, how to extend it safely.</p>
+        </a>
+        <a href="docs/boot-environments.html" class="wiki-card">
+          <h4>Boot Environments</h4>
+          <p>Create, activate, and roll back OS snapshots using ZFSBootMenu.</p>
+        </a>
+        <a href="docs/snapshots.html" class="wiki-card">
+          <h4>Snapshot System</h4>
+          <p>APT hooks, 15-minute /srv timer, count-based retention.</p>
+        </a>
+        <a href="docs/encryption.html" class="wiki-card">
+          <h4>ZFS Encryption</h4>
+          <p>AES-256-GCM dataset encryption — passphrase at ZFSBootMenu, key storage, recovery.</p>
+        </a>
+        <a href="docs/replication.html" class="wiki-card">
+          <h4>Replication</h4>
+          <p>Streaming datasets to TrueNAS, other nodes, or cloud VMs over wg3.</p>
+        </a>
+      </div>
+
+      <div class="section-label" style="margin-top:1.25rem;margin-bottom:0.75rem">Security</div>
+      <div class="wiki-grid">
+        <a href="docs/secure-boot.html" class="wiki-card">
+          <h4>Secure Boot + MOK</h4>
+          <p>MOK key generation, ZFS module signing, DKMS auto-sign, enrollment walkthrough.</p>
+        </a>
+        <a href="docs/air-gap.html" class="wiki-card">
+          <h4>Air-Gap Deployment</h4>
+          <p>The embedded darksite APT mirror — offline installs with zero internet dependency.</p>
+        </a>
+      </div>
+
+      <div class="section-label" style="margin-top:1.25rem;margin-bottom:0.75rem">Cluster</div>
+      <div class="wiki-grid">
+        <a href="docs/wireguard.html" class="wiki-card">
+          <h4>WireGuard Planes</h4>
+          <p>All four planes — addresses, ports, services, hub.env, live peer updates.</p>
+        </a>
+        <a href="docs/golden-images.html" class="wiki-card">
+          <h4>Golden Images</h4>
+          <p>Build, stamp, and spawn CoW clones — the full pipeline from ISO to running cluster.</p>
+        </a>
+        <a href="docs/cluster.html" class="wiki-card">
+          <h4>Cluster Bootstrap</h4>
+          <p>DEBZ-SEED, enrollment flow, node registration, Kubernetes via wg2, autobootstrap loop.</p>
+        </a>
+        <a href="docs/web-ui.html" class="wiki-card">
+          <h4>Web UI</h4>
+          <p>All panels — install wizard, WireGuard, golden images, VMs, ZFS, K8s, fleet inventory, logs.</p>
+        </a>
+        <a href="docs/proxmox.html" class="wiki-card">
+          <h4>Proxmox + debz</h4>
+          <p>ISO upload, VM creation, golden image deploy, data disks for ZFS topology testing.</p>
+        </a>
+        <a href="docs/extending.html" class="wiki-card">
+          <h4>Extending debz</h4>
+          <p>Custom repos, postinstall hooks, Ansible, Helm, Cilium, and drop-in Debian integration.</p>
+        </a>
+      </div>
+
+      <div class="section-label" style="margin-top:1.25rem;margin-bottom:0.75rem">Reference</div>
+      <div class="wiki-grid">
+        <a href="docs/commands.html" class="wiki-card">
+          <h4>Command Reference</h4>
+          <p>Every <code>debz-*</code> command — installer, firstboot, cluster ops, ZFS, network, security, and live-only tools.</p>
+        </a>
+        <a href="docs/faq.html" class="wiki-card">
+          <h4>FAQ</h4>
+          <p>Why ZFS, why WireGuard, air-gap installs, use cases, philosophy — the big questions answered.</p>
+        </a>
+        <a href="docs/license.html" class="wiki-card">
+          <h4>License</h4>
+          <p>debz is BSD 3-Clause. Use it commercially, keep modifications private, sell binary ISOs — no restrictions.</p>
+        </a>
+      </div>
+    </section>
+    </div><!-- /#view-docs -->
+
+    <div class="page-view" id="view-editions">
+    <!-- ── Free vs Pro ──────────────────────────────────────────────────────────── -->
+    <section>
+      <div class="section-label">Editions</div>
+      <h2>Free vs Pro</h2>
+      <p>Both editions run from the same ISO format. The edition is baked in at build time — it determines what the installer offers, what runs at first boot, and which web UI you get.</p>
+
+      <div style="overflow-x:auto;margin:2rem 0">
+      <table style="min-width:600px">
+        <thead>
+          <tr>
+            <th style="width:45%">Feature</th>
+            <th style="width:22%;text-align:center;color:#34d399">Free</th>
+            <th style="width:22%;text-align:center;color:#60a5fa">Pro</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Live &amp; Install</td></tr>
+          <tr><td>Ephemeral live GNOME desktop</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>ZFS on root installer</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>ZFS encryption (AES-256-GCM)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>ZFSBootMenu boot environments</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>APT snapshot hooks (pre-upgrade)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Offline / air-gap installer (darksite)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Secure Boot + MOK auto-sign</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Seed-based autoinstall (USB answers.env)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Installer modes</td></tr>
+          <tr><td>Standalone mode (independent node)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Cluster Manager mode (generates all keys + DB)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Join mode (fetches hub.env over LAN, joins mesh)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Virtualisation &amp; containers</td></tr>
+          <tr><td>KVM / libvirt hypervisor role</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Proxmox VE node role</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Firecracker microVM runtime</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Spawn VMs from live session (to KVM/Proxmox)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Config management</td></tr>
+          <tr><td>Salt (single-node masterless mode)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Ansible (single-node playbooks)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Salt master (fleet-wide states)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Fleet Ansible (auto-inventory from state.db)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Networking</td></tr>
+          <tr><td>WireGuard (single interface, manual config)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>4-plane WireGuard mesh (auto-configured at join)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Internal cluster DNS API</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>TLS cert issuance (cluster CA)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Fleet management (Pro only)</td></tr>
+          <tr><td>SQLite state.db (live node inventory)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>debz-reconcile (30s poll → auto-inventory)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Golden image pipeline (snapshot + clone)</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Audit trail</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr><td colspan="3" style="padding:0.75rem 0 0.25rem;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Web UI</td></tr>
+          <tr><td>Dashboard (system stats, ZFS health)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Install wizard</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>ZFS / snapshots / boot environments panel</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Log viewer</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Ansible launcher (single-node)</td><td style="text-align:center" class="yes">&#10003;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Node fleet panel</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>WireGuard mesh panel</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Golden images panel</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+          <tr><td>Cluster deploy panel</td><td style="text-align:center" class="no">&#10007;</td><td style="text-align:center" class="yes">&#10003;</td></tr>
+
+          <tr>
+            <td style="padding-top:1.25rem"><strong>Download</strong></td>
+            <td style="padding-top:1.25rem;text-align:center">
+              <a href="https://archive.org/download/debz-linux/debz-free-amd64.hybrid.iso" class="btn btn-primary btn-sm" target="_blank" rel="noopener">&#8595; Free</a>
+            </td>
+            <td style="padding-top:1.25rem;text-align:center">
+              <a href="https://archive.org/download/debz-linux/debz-pro-amd64.hybrid.iso" class="btn btn-sm" style="background:#60a5fa;color:#0f1117;font-weight:700" target="_blank" rel="noopener">&#8595; Pro</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+    <hr class="divider"/>
+    </div><!-- /#view-editions -->
+
+    <div class="page-view" id="view-download">
+    <section id="download">
+      <div class="section-label">Download</div>
+      <h2>Get debz</h2>
+
+      <div class="callout" style="margin-bottom:1.5rem;border-color:#34d39944;background:#0a1f14">
+        <strong style="color:#34d399">beta_0.08 — public beta</strong>
+        Active development. Core installer, ZFS, and web UI are all working.
+        Expect rough edges. Report issues at <a href="https://github.com/unixbox-net/debz" target="_blank" rel="noopener">github.com/unixbox-net/debz</a>.
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:2rem">
+
+        <div style="background:var(--surface);border:1px solid rgba(52,211,153,0.3);border-radius:10px;padding:1.5rem">
+          <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#34d399;margin-bottom:0.5rem">Free Edition</div>
+          <div style="font-size:1.25rem;font-weight:800;margin-bottom:0.75rem">debz Free</div>
+          <ul style="color:var(--muted);font-size:0.85rem;line-height:1.8;margin:0 0 1.25rem 1.1rem">
+            <li>Live ephemeral desktop</li>
+            <li>ZFS standalone installer</li>
+            <li>Salt + Ansible single-node</li>
+            <li>Spawn VMs to KVM / Proxmox</li>
+            <li>Storage / VDI / KVM role install</li>
+            <li>Offline / air-gap ready</li>
+            <li>Simple web UI</li>
+          </ul>
+          <a href="https://archive.org/download/debz-linux/debz-free-amd64.hybrid.iso"
+             class="btn btn-primary" target="_blank" rel="noopener" style="width:100%;justify-content:center">
+            &#8595;&nbsp; Download Free (AMD64)
+          </a>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;text-align:center">~1.8 GB &middot; archive.org</div>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid rgba(96,165,250,0.4);border-radius:10px;padding:1.5rem;position:relative">
+          <div style="position:absolute;top:-1px;right:1rem;background:#60a5fa;color:#0f1117;font-size:0.65rem;font-weight:800;padding:0.2rem 0.6rem;border-radius:0 0 6px 6px;letter-spacing:0.08em;text-transform:uppercase">Pro</div>
+          <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#60a5fa;margin-bottom:0.5rem">Pro Edition</div>
+          <div style="font-size:1.25rem;font-weight:800;margin-bottom:0.75rem">debz Pro</div>
+          <ul style="color:var(--muted);font-size:0.85rem;line-height:1.8;margin:0 0 1.25rem 1.1rem">
+            <li>Everything in Free</li>
+            <li>Cluster Manager mode</li>
+            <li>4-plane WireGuard mesh</li>
+            <li>State DB + fleet reconciler</li>
+            <li>Fleet Ansible (auto-inventory)</li>
+            <li>Golden image pipeline</li>
+            <li>Full web UI (nodes, deploy, WG)</li>
+          </ul>
+          <a href="https://archive.org/download/debz-linux/debz-pro-amd64.hybrid.iso"
+             class="btn" style="width:100%;justify-content:center;background:#60a5fa;color:#0f1117;font-weight:700" target="_blank" rel="noopener">
+            &#8595;&nbsp; Download Pro (AMD64)
+          </a>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;text-align:center">~1.8 GB &middot; archive.org</div>
+        </div>
+
+      </div>
+
+      <div class="dl-steps">
+        <div class="dl-step">
+          <div class="dl-num">1</div>
+          <div class="dl-body">
+            <strong>Download an edition</strong>
+            <span><strong>Free</strong> &mdash; live desktop, ZFS installer, standalone &nbsp;&middot;&nbsp; <strong>Pro</strong> &mdash; adds cluster manager, WireGuard mesh, fleet management</span>
+          </div>
+        </div>
+        <div class="dl-step">
+          <div class="dl-num">2</div>
+          <div class="dl-body">
+            <strong>Write to USB &mdash; or load into your hypervisor</strong>
+            <span>Balena Etcher, Rufus, or <code>dd if=debz.iso of=/dev/sdX bs=4M status=progress</code></span>
+          </div>
+        </div>
+        <div class="dl-step">
+          <div class="dl-num">3</div>
+          <div class="dl-body">
+            <strong>Boot it</strong>
+            <span>Live GNOME desktop launches automatically. Web UI opens in Firefox &mdash; or connect from any browser at <code>https://&lt;ip&gt;:8443</code>.</span>
+          </div>
+        </div>
+        <div class="dl-step">
+          <div class="dl-num">4</div>
+          <div class="dl-body">
+            <strong>Install &mdash; done in 90 seconds</strong>
+            <span>Pick a disk, confirm. ZFS pool, datasets, bootloader, and first-boot scripts are all automatic. System powers off when done &mdash; remove the USB and reboot into your new node.</span>
+          </div>
+          <div class="dl-features">
+            <span class="badge">ZFS on root</span>
+            <span class="badge">ZFSBootMenu</span>
+            <span class="badge">Auto snapshot</span>
+            <span class="badge">SSH ready</span>
+            <span class="badge">Air-gap ready</span>
+            <span class="badge">Secure Boot</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:2rem">
+        <strong>Default live credentials</strong>
+        The live session boots as <code>live</code> with no password prompt.
+        SSH: <strong>username&nbsp;<code>live</code> / password&nbsp;<code>live</code></strong>.
+        These exist only for the live session &mdash; nothing is written to disk until you run the installer.
+      </div>
+
+      <div class="section-label" style="margin-top:2rem">Minimum requirements</div>
+      <table>
+        <thead><tr><th>Resource</th><th>Minimum</th><th>Recommended</th></tr></thead>
+        <tbody>
+          <tr><td>CPU</td><td>2 cores (x86_64)</td><td>4+ cores</td></tr>
+          <tr><td>RAM</td><td>4 GB</td><td>8 GB+</td></tr>
+          <tr><td>Disk</td><td>40 GB</td><td>100 GB+ (NVMe preferred)</td></tr>
+          <tr><td>Firmware</td><td colspan="2">UEFI &mdash; Secure Boot optional (MOK enrolled automatically)</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <hr class="divider"/>
+    </div><!-- /#view-download -->
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="#screenshots">Screenshots</a>
+    <a href="#features">Features</a>
+    <a href="#templates">Templates</a>
+    <a href="#wireguard">WireGuard</a>
+    <a href="#pipeline">Pipeline</a>
+    <a href="#compare">Compare</a>
+    <a href="#docs">Docs</a>
+    <a href="#download">Download</a>
+    <a href="docs/license.html">License</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Ansible-ready &middot; Kubernetes &middot; AMD64 (v1 pilot) &middot; ARM64 WIP &middot; BSD-3-Clause</p>
+</footer>
+
+<script>
+function showView(viewId) {
+  document.querySelectorAll('.page-view').forEach(function(v) { v.classList.remove('active'); });
+  var view = document.getElementById(viewId);
+  if (view) { view.classList.add('active'); window.scrollTo(0, 0); }
+  document.querySelectorAll('.sb-view').forEach(function(a) {
+    a.classList.toggle('active', a.dataset.view === viewId);
+  });
+}
+
+// Wire up sb-view links
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.sb-view').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      showView(this.dataset.view);
+    });
+  });
+  // Handle hash on load
+  var viewMap = {
+    '#home': 'view-home', '#ethos': 'view-home',
+    '#screenshots': 'view-screenshots',
+    '#features': 'view-capabilities', '#use-cases': 'view-capabilities',
+    '#power': 'view-capabilities', '#templates': 'view-capabilities', '#wireguard': 'view-capabilities',
+    '#pipeline': 'view-pipeline',
+    '#how-it-works': 'view-howworks',
+    '#editions': 'view-editions',
+    '#zfs': 'view-storage',
+    '#compare': 'view-compare',
+    '#wiki': 'view-docs', '#docs': 'view-docs',
+    '#download': 'view-download'
+  };
+  function routeHash() {
+    var hash = window.location.hash;
+    if (hash && viewMap[hash]) { showView(viewMap[hash]); }
+  }
+  routeHash();
+  window.addEventListener('hashchange', routeHash);
+});
+</script>
+</body>
+</html>

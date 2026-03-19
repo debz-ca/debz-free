@@ -1,0 +1,9 @@
+bpftool
+bpftrace
+bpfcc-tools
+python3-bpfcc
+python3-psutil
+python3-venv
+python3-pip
+linux-headers-amd64
+linux-perf

@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# 0073-darksite-extend.hook.chroot
+# Bakes debz-darksite-extend.service into the live ISO squashfs.
+# On boot, the service scans for any disk/partition labeled DEBZ-DARK.
+# If found, it mounts it and overlays known subdirectories into /root/darksite/.
+#
+# Supported filesystems: exFAT, EXT4, NTFS (read-only mount)
+# Max capacity: limited only by the filesystem — 8TB+ supported.
+#
+# DEBZ-DARK directory layout:
+#   apt/        → merged into /root/darksite/apt/ (apt repo rebuilt after merge)
+#   images/     → bind-mounted at /root/darksite/images/
+#   helm/       → bind-mounted at /root/darksite/helm/
+#   ansible/    → bind-mounted at /root/darksite/ansible/
+#   salt/       → bind-mounted at /root/darksite/salt/
+#   iso/        → bind-mounted at /root/darksite/iso/
+#   pipelines/  → bind-mounted at /root/darksite/pipelines/
+#   custom/     → bind-mounted at /root/darksite/custom/
+#
+# Any unknown directories are also bind-mounted under /root/darksite/<name>.
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [darksite-extend] $*" >&2; }
+
+# ---------------------------------------------------------------------------
+# debz-darksite-extend script
+# ---------------------------------------------------------------------------
+
+cat > /usr/local/sbin/debz-darksite-extend <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG=/var/log/debz/darksite-extend.log
+mkdir -p /var/log/debz
+exec >> "${LOG}" 2>&1
+
+log() { printf '[%(%F %T)T] [darksite-extend] %s\n' -1 "$*"; }
+
+DARK_MNT=/mnt/debz-dark
+DARKSITE=/root/darksite
+
+log "Scanning for DEBZ-DARK disk..."
+
+# Find disk/partition with label DEBZ-DARK
+DARK_DEV="$(blkid -L DEBZ-DARK 2>/dev/null || true)"
+if [[ -z "${DARK_DEV}" ]]; then
+    log "No DEBZ-DARK disk found — nothing to do"
+    exit 0
+fi
+
+log "Found DEBZ-DARK at ${DARK_DEV}"
+
+# Detect filesystem type
+FS_TYPE="$(blkid -s TYPE -o value "${DARK_DEV}" 2>/dev/null || true)"
+log "Filesystem type: ${FS_TYPE:-unknown}"
+
+# Ensure exfat/ntfs utilities are available if needed
+case "${FS_TYPE}" in
+    exfat)
+        if ! command -v mount.exfat >/dev/null 2>&1 && ! command -v fsck.exfat >/dev/null 2>&1; then
+            log "WARNING: exfat-fuse not installed — attempting mount anyway"
+        fi
+        ;;
+    ntfs)
+        if ! command -v ntfs-3g >/dev/null 2>&1; then
+            log "WARNING: ntfs-3g not installed — attempting mount anyway"
+        fi
+        ;;
+esac
+
+mkdir -p "${DARK_MNT}"
+
+# Mount read-only; fall back to explicit type if blkid detected one
+MOUNT_OPTS="ro,noatime"
+if [[ -n "${FS_TYPE}" ]]; then
+    mount -t "${FS_TYPE}" -o "${MOUNT_OPTS}" "${DARK_DEV}" "${DARK_MNT}" || \
+        mount -o "${MOUNT_OPTS}" "${DARK_DEV}" "${DARK_MNT}"
+else
+    mount -o "${MOUNT_OPTS}" "${DARK_DEV}" "${DARK_MNT}"
+fi
+
+log "Mounted ${DARK_DEV} at ${DARK_MNT}"
+log "Contents: $(ls "${DARK_MNT}" | tr '\n' ' ')"
+
+mkdir -p "${DARKSITE}"
+
+# Known directories — bind-mount directly
+KNOWN_DIRS=(images helm ansible salt iso pipelines custom)
+
+for dir in "${KNOWN_DIRS[@]}"; do
+    src="${DARK_MNT}/${dir}"
+    dst="${DARKSITE}/${dir}"
+    if [[ -d "${src}" ]]; then
+        log "Binding ${dir}/ into ${dst}"
+        mkdir -p "${dst}"
+        mount --bind "${src}" "${dst}"
+    fi
+done
+
+# apt/ — special handling: copy .deb files and rebuild package index
+APT_SRC="${DARK_MNT}/apt"
+APT_DST="${DARKSITE}/apt"
+if [[ -d "${APT_SRC}" ]]; then
+    log "Merging DEBZ-DARK apt/ into ${APT_DST}"
+    mkdir -p "${APT_DST}"
+    # Count incoming .deb files
+    deb_count="$(find "${APT_SRC}" -name '*.deb' 2>/dev/null | wc -l)"
+    log "Found ${deb_count} .deb files to merge"
+    if [[ "${deb_count}" -gt 0 ]]; then
+        # Copy .deb files into the darksite apt pool
+        find "${APT_SRC}" -name '*.deb' -exec cp -n {} "${APT_DST}/" \;
+        log "Rebuilding APT package index..."
+        if command -v dpkg-scanpackages >/dev/null 2>&1; then
+            (cd "${DARKSITE}" && dpkg-scanpackages apt/ 2>/dev/null | gzip -9c > apt/Packages.gz)
+            (cd "${DARKSITE}" && dpkg-scanpackages apt/ 2>/dev/null > apt/Packages)
+            log "APT index rebuilt — ${deb_count} packages now available"
+        else
+            log "WARNING: dpkg-scanpackages not found — skipping index rebuild"
+        fi
+    fi
+fi
+
+# Overlay any remaining unknown directories not in KNOWN_DIRS list
+ALL_KNOWN=(apt images helm ansible salt iso pipelines custom)
+while IFS= read -r -d '' entry; do
+    name="$(basename "${entry}")"
+    # Skip known dirs (already handled) and files
+    [[ -d "${entry}" ]] || continue
+    skip=false
+    for k in "${ALL_KNOWN[@]}"; do
+        [[ "${name}" == "${k}" ]] && skip=true && break
+    done
+    if ! "${skip}"; then
+        dst="${DARKSITE}/${name}"
+        log "Unknown directory '${name}' — binding at ${dst}"
+        mkdir -p "${dst}"
+        mount --bind "${entry}" "${dst}"
+    fi
+done < <(find "${DARK_MNT}" -maxdepth 1 -mindepth 1 -print0)
+
+log "DEBZ-DARK integration complete — /root/darksite is ready"
+SCRIPT
+
+chmod +x /usr/local/sbin/debz-darksite-extend
+
+# ---------------------------------------------------------------------------
+# systemd service unit
+# ---------------------------------------------------------------------------
+
+cat > /usr/lib/systemd/system/debz-darksite-extend.service <<'SVC'
+[Unit]
+Description=debz darksite extension (DEBZ-DARK disk)
+Documentation=https://debz.ca/docs/air-gap.html
+After=local-fs.target systemd-udev-settle.service
+Before=debz-apt-mirror.service debz-autoinstall.service debz-webui.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-darksite-extend
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+# Allow up to 5 minutes for large disk mounts
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+# Enable in the live system
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /usr/lib/systemd/system/debz-darksite-extend.service \
+       /etc/systemd/system/multi-user.target.wants/debz-darksite-extend.service
+
+log "debz-darksite-extend.service baked in — will activate on DEBZ-DARK disk at boot"

@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+# Bake build metadata into the image for traceability
+MARKER=/etc/debz-build-marker
+{
+  echo "DEBZ_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # git may not be available in chroot; read pre-baked value if present
+  if [[ -f /etc/debz-build-sha ]]; then
+    echo "DEBZ_BUILD_SHA=$(cat /etc/debz-build-sha)"
+  fi
+  echo "DEBZ_BUILD_PROFILE=${PROFILE:-unknown}"
+} > "$MARKER"
+chmod 644 "$MARKER"

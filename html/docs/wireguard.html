@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>WireGuard Planes — debz</title>
+  <meta name="description" content="The four WireGuard network planes in debz — enrollment, management, Kubernetes, and storage — with addressing, hub.env, and debugging."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html" class="active">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / WireGuard Planes</div>
+
+    <h1>WireGuard Planes</h1>
+    <p class="page-subtitle">
+      debz uses four dedicated WireGuard interfaces, each with a fixed purpose. Separating planes
+      means storage traffic, Kubernetes, management, and enrollment never share a path &mdash; and
+      services bind to the right interface by design.
+    </p>
+
+    <h2>The four planes</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Interface</th>
+          <th>Network</th>
+          <th>Port</th>
+          <th>Purpose</th>
+          <th>Services that bind here</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge">wg0</span></td>
+          <td>10.77.0.0/16</td>
+          <td>51820</td>
+          <td>Enrollment only</td>
+          <td>debz-autobootstrap listener</td>
+        </tr>
+        <tr>
+          <td><span class="badge">wg1</span></td>
+          <td>10.78.0.0/16</td>
+          <td>51821</td>
+          <td>Management</td>
+          <td>Salt master, SSH, Web UI (:8080/:8081)</td>
+        </tr>
+        <tr>
+          <td><span class="badge">wg2</span></td>
+          <td>10.79.0.0/16</td>
+          <td>51822</td>
+          <td>Kubernetes</td>
+          <td>kubelet, Cilium, kubeadm API server</td>
+        </tr>
+        <tr>
+          <td><span class="badge">wg3</span></td>
+          <td>10.80.0.0/16</td>
+          <td>51823</td>
+          <td>Storage</td>
+          <td>NFS exports, iSCSI, ZFS replication, prometheus-node-exporter</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout warning">
+      <strong>Rule: never bind services to wg0.</strong>
+      wg0 is enrollment-only and unreliable on some hardware. Salt, SSH, the Web UI, and all
+      management tooling bind exclusively to wg1 (10.78.0.0/16). Services that accidentally bind
+      to wg0 will appear to work on well-behaved hardware and silently fail on others.
+    </div>
+
+    <h2>Node IP addressing</h2>
+    <p>
+      Each node is assigned an integer index at stamp or enrollment time. The index maps directly
+      to the last octet on every plane. The MASTER hub is always <code>.1</code>.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Node</th><th>Index</th><th>wg0</th><th>wg1</th><th>wg2</th><th>wg3</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>master-01 (hub)</td><td>1</td><td>10.77.0.1</td><td>10.78.0.1</td><td>10.79.0.1</td><td>10.80.0.1</td></tr>
+        <tr><td>kvm-01</td><td>2</td><td>10.77.0.2</td><td>10.78.0.2</td><td>10.79.0.2</td><td>10.80.0.2</td></tr>
+        <tr><td>storage-01</td><td>3</td><td>10.77.0.3</td><td>10.78.0.3</td><td>10.79.0.3</td><td>10.80.0.3</td></tr>
+        <tr><td>vdi-01</td><td>4</td><td>10.77.0.4</td><td>10.78.0.4</td><td>10.79.0.4</td><td>10.80.0.4</td></tr>
+        <tr><td>node-N</td><td>N</td><td>10.77.0.N</td><td>10.78.0.N</td><td>10.79.0.N</td><td>10.80.0.N</td></tr>
+      </tbody>
+    </table>
+
+    <p>Formula: for plane <code>wgX</code> (X = 0..3), node at index N has IP <code>10.7(7+X).0.N</code>.</p>
+
+    <h2>Hub is always .1 on every plane</h2>
+    <p>
+      The MASTER node acts as the WireGuard hub. Its interface addresses are fixed and must never
+      be reassigned. Nodes route all inter-plane traffic through the hub on wg0/wg1; wg2 and wg3
+      can use direct peer-to-peer routing between nodes once enrolled, but the hub still holds
+      <code>.1</code> on those networks to anchor Salt, DNS, and cluster control-plane endpoints.
+    </p>
+
+    <h2>Live peer updates &mdash; no restarts</h2>
+    <p>
+      New nodes are added to the hub without restarting any WireGuard interface. The hub&rsquo;s
+      <code>debz-autobootstrap</code> daemon calls <code>wg set</code> directly on the running
+      interface:
+    </p>
+    <pre><code><span class="c"># Hub adds node-05 (index 5) to all four planes</span>
+<span class="k">wg set</span> wg0 peer &lt;node-05-pubkey&gt; allowed-ips 10.77.0.5/32
+<span class="k">wg set</span> wg1 peer &lt;node-05-pubkey&gt; allowed-ips 10.78.0.5/32
+<span class="k">wg set</span> wg2 peer &lt;node-05-pubkey&gt; allowed-ips 10.79.0.5/32
+<span class="k">wg set</span> wg3 peer &lt;node-05-pubkey&gt; allowed-ips 10.80.0.5/32
+
+<span class="c"># No wg-quick down/up needed &mdash; changes take effect immediately</span></code></pre>
+
+    <h2>Checking WireGuard status</h2>
+    <pre><code><span class="c"># Show all interfaces and peer handshakes</span>
+<span class="k">wg show</span>
+
+<span class="c"># Check wg1 specifically &mdash; management plane</span>
+<span class="k">wg show</span> wg1
+
+<span class="c"># Verify interface addresses</span>
+<span class="k">ip addr show</span> wg1
+
+<span class="c"># Ping the hub on wg1 (management plane)</span>
+<span class="k">ping</span> -c 3 10.78.0.1
+
+<span class="c"># Check the peer table (all configured peers on wg1)</span>
+<span class="k">wg show</span> wg1 peers
+
+<span class="c"># See latest handshake times</span>
+<span class="k">wg show</span> wg1 latest-handshakes</code></pre>
+
+    <h2>Setting up wg0 for enrollment</h2>
+    <p>On a fresh node before enrollment, wg0 is the only pre-configured interface. It is configured
+    with the node&rsquo;s private key and the hub&rsquo;s endpoint and public key:</p>
+    <pre><code><span class="c"># /etc/wireguard/wg0.conf on a new node (pre-enrollment)</span>
+[Interface]
+Address = <span class="c"># assigned during stamp or DEBZ-SEED</span>
+PrivateKey = &lt;node-private-key&gt;
+ListenPort = 51820
+
+[Peer]
+PublicKey = &lt;hub-wg0-pubkey&gt;
+Endpoint = &lt;hub-public-ip&gt;:51820
+AllowedIPs = 10.77.0.0/16
+PersistentKeepalive = 25
+
+<span class="c"># Bring up enrollment plane</span>
+<span class="k">wg-quick up</span> wg0
+
+<span class="c"># Verify connectivity to hub enrollment listener</span>
+<span class="k">ping</span> -c 3 10.77.0.1</code></pre>
+
+    <h2>hub.env format</h2>
+    <p>
+      When a node successfully enrolls via wg0, the hub issues a signed <code>hub.env</code> file.
+      This file contains everything the node needs to configure all four planes and join Salt.
+    </p>
+    <pre><code><span class="c"># hub.env &mdash; issued by debz-autobootstrap on the MASTER node</span>
+<span class="k">DEBZ_NODE_INDEX</span>=<span class="s">5</span>
+<span class="k">DEBZ_HOSTNAME</span>=<span class="s">kvm-05</span>
+
+<span class="c"># WireGuard keys and hub endpoints for all four planes</span>
+<span class="k">DEBZ_HUB_WG0_PUBKEY</span>=<span class="s">&lt;hub-wg0-pubkey&gt;</span>
+<span class="k">DEBZ_HUB_WG1_PUBKEY</span>=<span class="s">&lt;hub-wg1-pubkey&gt;</span>
+<span class="k">DEBZ_HUB_WG2_PUBKEY</span>=<span class="s">&lt;hub-wg2-pubkey&gt;</span>
+<span class="k">DEBZ_HUB_WG3_PUBKEY</span>=<span class="s">&lt;hub-wg3-pubkey&gt;</span>
+<span class="k">DEBZ_HUB_ENDPOINT</span>=<span class="s">203.0.113.10</span>   <span class="c"># hub public IP or DNS name</span>
+
+<span class="c"># Assigned IPs</span>
+<span class="k">DEBZ_WG0_IP</span>=<span class="s">10.77.0.5</span>
+<span class="k">DEBZ_WG1_IP</span>=<span class="s">10.78.0.5</span>
+<span class="k">DEBZ_WG2_IP</span>=<span class="s">10.79.0.5</span>
+<span class="k">DEBZ_WG3_IP</span>=<span class="s">10.80.0.5</span>
+
+<span class="c"># Salt master on wg1</span>
+<span class="k">DEBZ_SALT_MASTER</span>=<span class="s">10.78.0.1</span></code></pre>
+
+    <p>
+      The node&rsquo;s <code>debz-autobootstrap</code> client receives this file, writes WireGuard
+      configs for wg1/wg2/wg3, brings all four interfaces up, and starts <code>salt-minion</code>
+      pointed at <code>10.78.0.1</code>.
+    </p>
+
+    <div class="callout warning">
+      <strong>wg0 reliability note</strong>
+      wg0 uses port 51820. On some hardware (certain consumer NICs, some hypervisor vNIC drivers),
+      this port&rsquo;s packets are silently dropped or the handshake stalls. This is why wg0 is
+      enrollment-only and not used for any operational traffic. If a node cannot enroll via wg0,
+      manually copy <code>hub.env</code> to the node over any available path (USB, SSH to live
+      session, serial console) and run <code>debz-apply-role --hub-env /path/to/hub.env</code>.
+    </div>
+
+    <h2>Debugging WireGuard</h2>
+    <pre><code><span class="c"># Enable kernel debug logging (temporary, verbose)</span>
+<span class="k">echo</span> module wireguard +p &gt; /sys/kernel/debug/dynamic_debug/control
+
+<span class="c"># Watch kernel messages for WireGuard events</span>
+<span class="k">dmesg</span> -wH | grep -i wireguard
+
+<span class="c"># Check if handshake is happening (non-zero = recently handshaked)</span>
+<span class="k">wg show</span> wg0 latest-handshakes
+
+<span class="c"># Verify UDP port is open on hub from node</span>
+<span class="k">nc</span> -u -z &lt;hub-public-ip&gt; 51820 &amp;&amp; echo "reachable"
+
+<span class="c"># Check firewall is not blocking (on hub)</span>
+<span class="k">nft list ruleset</span> | grep 5182
+
+<span class="c"># Force a keepalive to re-trigger handshake</span>
+<span class="k">ping</span> -c 1 10.77.0.1</code></pre>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

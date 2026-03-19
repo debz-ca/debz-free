@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""
+debz-webui — free edition web UI backend.
+Serves the installer UI and handles ZFS/install actions over WebSocket.
+Single port: HTTP static files + WebSocket upgrades via process_request.
+"""
+import argparse
+import asyncio
+import json
+import logging
+import mimetypes
+import os
+import re
+import shlex
+import ssl
+import subprocess
+import sys
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+WEBUI_DIR   = Path("/usr/local/share/debz-webui/free")
+CERT_DIR    = Path("/etc/debz/tls")
+LOG_DIR     = Path("/var/log/debz")
+LOG_FILES   = {
+    "installer": LOG_DIR / "installer.log",
+    "firstboot":  LOG_DIR / "firstboot.log",
+    "system":     LOG_DIR / "debz.log",
+}
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [webui] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+LOG = logging.getLogger("debz-webui")
+
+# ---------------------------------------------------------------------------
+# System helpers
+# ---------------------------------------------------------------------------
+
+def get_disks():
+    try:
+        out = subprocess.check_output(
+            ["lsblk", "-J", "-o", "NAME,SIZE,MODEL,TYPE,RM,MOUNTPOINT"], text=True)
+        data = json.loads(out)
+        return [
+            {
+                "name":      f'/dev/{d["name"]}',
+                "size":      d.get("size", "?"),
+                "model":     (d.get("model") or "").strip(),
+                "removable": d.get("rm", False),
+            }
+            for d in data.get("blockdevices", [])
+            if d.get("type") == "disk"
+        ]
+    except Exception as e:
+        LOG.error("lsblk failed: %s", e)
+        return []
+
+
+def get_system_info():
+    info = {}
+    try:
+        with open("/proc/loadavg") as f:
+            info["load"] = f.read().split()[:3]
+    except Exception:
+        info["load"] = ["?", "?", "?"]
+    try:
+        with open("/proc/meminfo") as f:
+            mem = {}
+            for line in f:
+                k, v = line.split(":", 1)
+                mem[k.strip()] = int(v.split()[0])
+        total = mem.get("MemTotal", 0)
+        avail = mem.get("MemAvailable", 0)
+        info["mem_total_mb"] = total // 1024
+        info["mem_used_mb"]  = (total - avail) // 1024
+    except Exception:
+        info["mem_total_mb"] = info["mem_used_mb"] = 0
+    try:
+        with open("/proc/uptime") as f:
+            secs = int(float(f.read().split()[0]))
+        h, m = divmod(secs // 60, 60)
+        info["uptime"] = f"{h}h {m}m" if h else f"{m}m"
+    except Exception:
+        info["uptime"] = "?"
+    try:
+        result = subprocess.check_output(
+            ["df", "-BM", "--output=size,avail", "/"], text=True).splitlines()
+        if len(result) > 1:
+            parts = result[1].split()
+            info["disk_total_mb"] = int(parts[0].rstrip("M"))
+            info["disk_avail_mb"] = int(parts[1].rstrip("M"))
+    except Exception:
+        info["disk_total_mb"] = info["disk_avail_mb"] = 0
+    try:
+        info["hostname"] = open("/etc/hostname").read().strip()
+    except Exception:
+        info["hostname"] = "debz"
+    try:
+        with open("/proc/stat") as f:
+            for line in f:
+                if line.startswith("cpu "):
+                    vals = list(map(int, line.split()[1:]))
+                    idle = vals[3]
+                    total = sum(vals)
+                    info["cpu_idle"]  = idle
+                    info["cpu_total"] = total
+                    break
+    except Exception:
+        info["cpu_idle"] = info["cpu_total"] = 0
+    return info
+
+
+def get_network_interfaces():
+    ifaces = []
+    try:
+        out = subprocess.check_output(
+            ["ip", "-j", "addr"], text=True)
+        for iface in json.loads(out):
+            name = iface.get("ifname", "")
+            if name in ("lo",) or name.startswith("wg"):
+                continue
+            flags = iface.get("flags", [])
+            up    = "UP" in flags
+            addrs = [
+                a["local"] for a in iface.get("addr_info", [])
+                if a.get("family") == "inet"
+            ]
+            ifaces.append({
+                "name": name,
+                "up":   up,
+                "addr": addrs[0] if addrs else "",
+            })
+    except Exception as e:
+        LOG.error("ip addr failed: %s", e)
+    return ifaces
+
+
+# ---------------------------------------------------------------------------
+# Async subprocess streaming
+# ---------------------------------------------------------------------------
+
+async def _stream_proc(websocket, cmd, env=None, target="log"):
+    await websocket.send(json.dumps({"type": "exec_start", "cmd": str(cmd), "target": target}))
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env={**os.environ, **(env or {})},
+    )
+    async for line in proc.stdout:
+        await websocket.send(json.dumps({
+            "type":   "log_line",
+            "line":   line.decode(errors="replace").rstrip(),
+            "target": target,
+        }))
+    rc = await proc.wait()
+    await websocket.send(json.dumps({"type": "exec_done", "rc": rc, "target": target}))
+    return rc
+
+
+async def _tail_log(websocket, log_path):
+    try:
+        path = Path(log_path)
+        if not path.exists():
+            await websocket.send(json.dumps({"type": "log_line", "line": "(log file not found)", "target": "log"}))
+            return
+        out = subprocess.check_output(["tail", "-n", "200", str(path)], text=True)
+        for line in out.splitlines():
+            await websocket.send(json.dumps({"type": "log_line", "line": line, "target": "log"}))
+    except Exception as e:
+        await websocket.send(json.dumps({"type": "log_line", "line": f"(error reading log: {e})", "target": "log"}))
+
+
+# ---------------------------------------------------------------------------
+# Action handlers
+# ---------------------------------------------------------------------------
+
+async def _run_install(websocket, msg):
+    params = msg.get("params", {})
+    # Map frontend 'role' → DEBZ_PROFILE
+    if "role" in params and "profile" not in params:
+        params["profile"] = params.pop("role")
+    answers = []
+    for k, v in params.items():
+        key = k.upper()
+        if not key.startswith("DEBZ_"):
+            key = f"DEBZ_{key}"
+        answers.append(f"{key}={shlex.quote(str(v))}")
+    answers_path = "/tmp/debz-webui-answers.env"
+    with open(answers_path, "w") as f:
+        f.write("\n".join(answers) + "\n")
+    os.chmod(answers_path, 0o600)
+    await _stream_proc(websocket,
+        ["/usr/local/bin/debz-install-target", "--config", answers_path],
+        target="install")
+
+
+async def _run_wipe_disk(websocket, msg):
+    disk = msg.get("disk", "")
+    if not re.match(r'^/dev/[a-z]{2,8}[0-9]{0,3}$', disk):
+        await websocket.send(json.dumps({"type": "error", "msg": f"Invalid disk: {disk}"}))
+        return
+    cmd = ["bash", "-c",
+           f"blkdiscard -z {disk} 2>/dev/null || "
+           f"dd if=/dev/zero of={disk} bs=1M status=progress 2>&1; "
+           f"sync; echo 'Wipe complete.'"]
+    await _stream_proc(websocket, cmd, target="install")
+
+
+# ---------------------------------------------------------------------------
+# WebSocket handler
+# ---------------------------------------------------------------------------
+
+async def ws_handler(websocket):
+    remote = websocket.remote_address
+    LOG.info("WebSocket client connected: %s", remote)
+    try:
+        async for raw in websocket:
+            try:
+                msg    = json.loads(raw)
+                action = msg.get("action", "")
+                LOG.info("WS action: %s", action)
+
+                if action == "system_info":
+                    await websocket.send(json.dumps({
+                        "type": "system_info",
+                        **get_system_info(),
+                    }))
+
+                elif action == "list_disks":
+                    await websocket.send(json.dumps({
+                        "type":  "disk_list",
+                        "disks": get_disks(),
+                    }))
+
+                elif action == "network_info":
+                    ifaces = get_network_interfaces()
+                    await websocket.send(json.dumps({
+                        "type":       "network_info",
+                        "interfaces": ifaces,
+                    }))
+
+                elif action == "zfs_status":
+                    try:
+                        out = subprocess.check_output(
+                            ["zpool", "status"], text=True, stderr=subprocess.STDOUT)
+                    except subprocess.CalledProcessError as e:
+                        out = e.output or "no pools available"
+                    except FileNotFoundError:
+                        out = "zpool not found"
+                    await websocket.send(json.dumps({"type": "zfs_status", "output": out}))
+
+                elif action == "snapshot_list":
+                    try:
+                        out = subprocess.check_output(
+                            ["zfs", "list", "-t", "snapshot", "-o", "name,creation,used", "-s", "creation"],
+                            text=True, stderr=subprocess.STDOUT)
+                    except subprocess.CalledProcessError as e:
+                        out = e.output or "no snapshots"
+                    except FileNotFoundError:
+                        out = "zfs not found"
+                    await websocket.send(json.dumps({"type": "snapshot_list", "output": out}))
+
+                elif action == "snapshot_take":
+                    dataset = msg.get("dataset", "rpool")
+                    name    = msg.get("name", "manual")
+                    snap    = f"{dataset}@{name}"
+                    try:
+                        subprocess.check_output(["zfs", "snapshot", "-r", snap],
+                                                stderr=subprocess.STDOUT, text=True)
+                        await websocket.send(json.dumps({"type": "ok", "msg": f"Snapshot {snap} created"}))
+                    except subprocess.CalledProcessError as e:
+                        await websocket.send(json.dumps({"type": "error", "msg": e.output or str(e)}))
+
+                elif action == "snapshot_rollback":
+                    snap = msg.get("snapshot", "")
+                    if not re.match(r'^[a-zA-Z0-9/_@:.-]+$', snap):
+                        await websocket.send(json.dumps({"type": "error", "msg": "Invalid snapshot name"}))
+                        continue
+                    try:
+                        subprocess.check_output(["zfs", "rollback", "-r", snap],
+                                                stderr=subprocess.STDOUT, text=True)
+                        await websocket.send(json.dumps({"type": "ok", "msg": f"Rolled back to {snap}"}))
+                    except subprocess.CalledProcessError as e:
+                        await websocket.send(json.dumps({"type": "error", "msg": e.output or str(e)}))
+
+                elif action == "be_list":
+                    try:
+                        out = subprocess.check_output(
+                            ["zfs", "list", "-t", "filesystem", "-o", "name,used,mountpoint",
+                             "-r", "rpool/ROOT"],
+                            text=True, stderr=subprocess.STDOUT)
+                    except subprocess.CalledProcessError as e:
+                        out = e.output or "no boot environments"
+                    except FileNotFoundError:
+                        out = "zfs not found"
+                    await websocket.send(json.dumps({"type": "be_list", "output": out}))
+
+                elif action == "be_create":
+                    name = msg.get("name", "")
+                    if not re.match(r'^[a-zA-Z0-9_.-]+$', name):
+                        await websocket.send(json.dumps({"type": "error", "msg": "Invalid boot environment name"}))
+                        continue
+                    try:
+                        hostname = open("/etc/hostname").read().strip()
+                        src  = f"rpool/ROOT/{hostname}"
+                        dest = f"rpool/ROOT/{name}"
+                        subprocess.check_output(["zfs", "snapshot", f"{src}@{name}"],
+                                                stderr=subprocess.STDOUT, text=True)
+                        subprocess.check_output(["zfs", "clone", f"{src}@{name}", dest],
+                                                stderr=subprocess.STDOUT, text=True)
+                        await websocket.send(json.dumps({"type": "ok", "msg": f"Boot environment {name} created"}))
+                    except subprocess.CalledProcessError as e:
+                        await websocket.send(json.dumps({"type": "error", "msg": e.output or str(e)}))
+
+                elif action == "tail_log":
+                    log_name = msg.get("log", "installer")
+                    log_path = LOG_FILES.get(log_name, LOG_FILES["installer"])
+                    await _tail_log(websocket, log_path)
+
+                elif action == "install":
+                    await _run_install(websocket, msg)
+
+                elif action == "wipe_disk":
+                    await _run_wipe_disk(websocket, msg)
+
+                else:
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "msg":  f"Unknown action '{action}'",
+                    }))
+
+            except json.JSONDecodeError:
+                LOG.warning("Invalid JSON from %s", remote)
+            except Exception as e:
+                LOG.exception("Error handling action: %s", e)
+                try:
+                    await websocket.send(json.dumps({"type": "error", "msg": str(e)}))
+                except Exception:
+                    pass
+
+    except Exception:
+        pass
+    LOG.info("WebSocket client disconnected: %s", remote)
+
+
+# ---------------------------------------------------------------------------
+# HTTP + WebSocket server (single port)
+# ---------------------------------------------------------------------------
+
+async def main_async(args):
+    import websockets
+    from websockets.http11 import Response as WsResponse
+    from websockets.datastructures import Headers as WsHeaders
+
+    ssl_ctx = None
+    cert = CERT_DIR / "debz.crt"
+    key  = CERT_DIR / "debz.key"
+    if cert.exists() and key.exists():
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(str(cert), str(key))
+        LOG.info("TLS enabled: %s", cert)
+    else:
+        LOG.info("No TLS cert found — serving HTTP (no TLS)")
+
+    async def process_request(connection, request):
+        if request.headers.get("Upgrade", "").lower() == "websocket":
+            return None
+        url_path = request.path.split("?")[0] or "/"
+        if url_path == "/":
+            url_path = "/index.html"
+        file_path = WEBUI_DIR / url_path.lstrip("/")
+        try:
+            file_path.resolve().relative_to(WEBUI_DIR.resolve())
+        except ValueError:
+            return WsResponse(403, "Forbidden", WsHeaders([]), b"Forbidden\n")
+        if not file_path.exists() or not file_path.is_file():
+            return WsResponse(404, "Not Found", WsHeaders([]), b"Not Found\n")
+        ctype, _ = mimetypes.guess_type(str(file_path))
+        body = file_path.read_bytes()
+        headers = WsHeaders([
+            ("Content-Type",   ctype or "application/octet-stream"),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control",  "no-cache"),
+        ])
+        return WsResponse(200, "OK", headers, body)
+
+    scheme = "wss" if ssl_ctx else "ws"
+    LOG.info("Serving on %s://%s:%s", "https" if ssl_ctx else "http", args.bind, args.port)
+
+    async with websockets.serve(
+        ws_handler, args.bind, args.port,
+        ping_interval=20, ping_timeout=10,
+        ssl=ssl_ctx,
+        process_request=process_request,
+    ):
+        if not args.no_browser:
+            await asyncio.sleep(1)
+            for cmd in ["xdg-open", "firefox-esr", "chromium"]:
+                if subprocess.run(["which", cmd], capture_output=True).returncode == 0:
+                    subprocess.Popen([cmd, f"{scheme}://{args.bind}:{args.port}/"])
+                    break
+        await asyncio.Future()
+
+
+def main():
+    ap = argparse.ArgumentParser(description="debz Web UI (free edition)")
+    ap.add_argument("--port",       type=int, default=8080)
+    ap.add_argument("--bind",       default="0.0.0.0")
+    ap.add_argument("--no-browser", action="store_true")
+    args = ap.parse_args()
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        asyncio.run(main_async(args))
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

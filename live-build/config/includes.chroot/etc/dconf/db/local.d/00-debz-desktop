@@ -1,0 +1,72 @@
+# ── Interface: dark mode + steel gray ────────────────────────────────────────
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+gtk-theme='Adwaita-dark'
+icon-theme='Adwaita'
+cursor-theme='Adwaita'
+font-name='Cantarell 11'
+monospace-font-name='Monospace 12'
+font-antialiasing='rgba'
+font-hinting='slight'
+enable-animations=true
+
+# ── Background: dark steel ────────────────────────────────────────────────────
+[org/gnome/desktop/background]
+picture-uri='file:///home/live/Pictures/debz-bg.jpg'
+picture-uri-dark='file:///home/live/Pictures/debz-bg.jpg'
+picture-options='zoom'
+primary-color='#1a1f2b'
+secondary-color='#1a1f2b'
+
+# ── Screensaver ───────────────────────────────────────────────────────────────
+[org/gnome/desktop/screensaver]
+picture-uri='file:///home/live/Pictures/debz-bg.jpg'
+picture-options='zoom'
+primary-color='#1a1f2b'
+
+# ── Shell ─────────────────────────────────────────────────────────────────────
+[org/gnome/shell]
+favorite-apps=['debz-webui.desktop','org.gnome.Terminal.desktop']
+enabled-extensions=@as []
+# Suppress the "welcome to GNOME" / first-run dialog
+welcome-dialog-last-shown-version='99.0.0'
+
+# ── Session Manager — suppress "set GNOME as default" nag ────────────────────
+[org/gnome/SessionManager]
+auto-save-session=false
+
+# ── Initial setup — disable first-run wizard ──────────────────────────────────
+[org/gnome/initial-setup]
+system-service-activated=true
+
+# ── Mutter / window manager ───────────────────────────────────────────────────
+[org/gnome/mutter]
+center-new-windows=true
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+theme='Adwaita-dark'
+
+# ── Terminal: dark + 18pt ─────────────────────────────────────────────────────
+[org/gnome/terminal/legacy]
+theme-variant='dark'
+default-show-menubar=false
+
+[org/gnome/terminal/legacy/profiles:/:b1dcc9dd-5262-4d8d-a863-c897e6d979b9]
+visible-name='debz'
+use-system-font=false
+font='Monospace 18'
+use-theme-colors=false
+background-color='#1a1f2b'
+foreground-color='#e2e8f0'
+bold-color='#ffffff'
+bold-color-same-as-fg=false
+cursor-colors-set=true
+cursor-background-color='#64b5f6'
+cursor-foreground-color='#1a1f2b'
+palette=['#1a1f2b','#ef5350','#66bb6a','#ffca28','#42a5f5','#ab47bc','#26c6da','#e2e8f0','#2c3347','#ff7043','#9ccc65','#ffd54f','#64b5f6','#ce93d8','#4dd0e1','#ffffff']
+scrollbar-policy='never'
+audible-bell=false
+use-custom-command=true
+custom-command='tmux new-session -A -s debz'
+login-shell=true

@@ -1,0 +1,17 @@
+# VDI profile packages — virtual desktop delivery
+mutter
+gnome-session
+gdm3
+ffmpeg
+libsrt1.5
+pipewire
+wireplumber
+wf-recorder
+xdotool
+xclip
+python3-websockets
+evemu-tools
+nginx
+nftables
+chrony
+wireguard-tools

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Air-Gap Deployment — debz</title>
+  <meta name="description" content="Using the embedded darksite APT mirror for offline installs — SCIF, isolated networks, ships at sea."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html" class="active">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Air-Gap Deployment</div>
+
+    <h1>Air-Gap Deployment</h1>
+    <p class="page-subtitle">
+      The debz ISO contains a complete embedded APT mirror &mdash; the darksite. Boot, install,
+      and run fully offline. No internet connection required at any point.
+    </p>
+
+    <h2>What is the darksite?</h2>
+    <p>
+      The <strong>darksite</strong> is an APT mirror embedded directly in the live ISO. It
+      runs as a local HTTP service inside the live session at
+      <code>http://127.0.0.1:3142/apt</code>. The installer queries this endpoint during
+      bootstrap and package installation, making the entire install process work with zero
+      outbound network connectivity.
+    </p>
+    <p>
+      The darksite contains the full package set needed to bootstrap Debian trixie for both
+      the server and desktop profiles, including ZFS, the kernel, eBPF tools, WireGuard, and
+      all profile dependencies. It is a snapshot of the Debian archive at ISO build time.
+    </p>
+
+    <h2>Mirror auto-detection</h2>
+    <p>
+      The installer performs a health check at startup to determine which mirror to use:
+    </p>
+    <ol>
+      <li>
+        <strong>Check local darksite</strong> &mdash; <code>curl http://127.0.0.1:3142/apt/</code>
+        If the darksite responds with HTTP 200, the installer uses it as the primary mirror.
+      </li>
+      <li>
+        <strong>Fall back to internet</strong> &mdash; If the darksite is not available (e.g., started
+        from a custom live session), the installer falls back to <code>mirror.it.ubc.ca/debian</code>
+        as the internet mirror.
+      </li>
+    </ol>
+    <p>
+      This means the same answer file and the same installer invocation works in both online and
+      offline environments &mdash; no conditional logic in your automation.
+    </p>
+    <pre><code><span class="c"># The installer reports which mirror it will use</span>
+<span class="k">debz-installer</span> --guided
+
+<span class="ok">[debz-installer] Checking for local darksite mirror...</span>
+<span class="ok">[debz-installer] Darksite online: http://127.0.0.1:3142/apt</span>
+<span class="ok">[debz-installer] Using local mirror &mdash; no internet required</span></code></pre>
+
+    <pre><code><span class="c"># Or when darksite is unavailable</span>
+<span class="ok">[debz-installer] Checking for local darksite mirror...</span>
+<span class="ok">[debz-installer] Darksite not found &mdash; using internet mirror</span>
+<span class="ok">[debz-installer] Mirror: http://mirror.it.ubc.ca/debian</span></code></pre>
+
+    <h2>Fully offline install walkthrough</h2>
+    <ol>
+      <li>
+        <strong>Write the ISO to USB</strong> &mdash; The ISO is self-contained. No additional files needed.
+      </li>
+      <li>
+        <strong>Transport the USB</strong> &mdash; physically carry it to the air-gapped location.
+        The ISO is signed; verify the checksum before you go.
+      </li>
+      <li>
+        <strong>Boot the live session</strong> &mdash; The darksite service starts automatically.
+        No network configuration is required for the install itself.
+      </li>
+      <li>
+        <strong>Run the installer</strong> &mdash; guided or unattended, it will use the local mirror.
+      </li>
+      <li>
+        <strong>Set static IP during install</strong> &mdash; if the installed system will be accessed
+        via local network, configure a static IP in the installer&rsquo;s network step.
+      </li>
+    </ol>
+
+    <div class="callout info">
+      <strong>Note</strong>
+      The network step in the installer configures the <em>installed system</em>, not the live
+      session. You can install debz on a machine with no network cable plugged in at all &mdash; choose
+      network method <code>dhcp</code> and configure it post-install, or skip network config
+      and set it up via the console after first boot.
+    </div>
+
+    <h2>Unattended air-gap deployment</h2>
+    <p>
+      For deploying multiple machines in an isolated environment, use an answer file. The
+      only per-machine variable that changes is the hostname and IP:
+    </p>
+    <pre><code><span class="c"># node-answers.env &mdash; template for isolated network deployment</span>
+<span class="k">DEBZ_HOSTNAME</span>=<span class="s">node-01</span>         <span class="c"># change per machine</span>
+<span class="k">DEBZ_PROFILE</span>=<span class="s">server</span>
+<span class="k">DEBZ_USERNAME</span>=<span class="s">admin</span>
+<span class="k">DEBZ_PASSWORD</span>=<span class="s">vault-managed</span>
+
+<span class="k">DEBZ_DISK</span>=<span class="s">/dev/sda</span>
+<span class="k">DEBZ_ZFS_TOPOLOGY</span>=<span class="s">single</span>
+<span class="k">DEBZ_ZFS_ENCRYPT</span>=<span class="s">1</span>
+<span class="k">DEBZ_ZFS_PASSPHRASE</span>=<span class="s">site-wide-passphrase</span>
+
+<span class="k">DEBZ_TIMEZONE</span>=<span class="s">UTC</span>
+<span class="k">DEBZ_LOCALE</span>=<span class="s">en_US.UTF-8</span>
+<span class="k">DEBZ_KEYBOARD_LAYOUT</span>=<span class="s">us</span>
+
+<span class="k">DEBZ_NET_METHOD</span>=<span class="s">static</span>
+<span class="k">DEBZ_NET_IFACE</span>=<span class="s">eth0</span>
+<span class="k">DEBZ_NET_IP</span>=<span class="s">10.10.0.11</span>      <span class="c"># change per machine</span>
+<span class="k">DEBZ_NET_PREFIX</span>=<span class="s">24</span>
+<span class="k">DEBZ_NET_GW</span>=<span class="s">10.10.0.1</span>
+<span class="k">DEBZ_NET_DNS</span>=<span class="s">10.10.0.1</span>      <span class="c"># local DNS only</span></code></pre>
+
+    <h2>What packages are in the darksite?</h2>
+    <p>The darksite includes packages for both profiles plus all installer dependencies:</p>
+
+    <h3>Core (both profiles)</h3>
+    <ul>
+      <li>Debian trixie base system (<code>debootstrap</code> output)</li>
+      <li><code>linux-image</code>, <code>linux-headers</code></li>
+      <li><code>zfs-dkms</code>, <code>zfs-initramfs</code>, <code>zfsutils-linux</code></li>
+      <li><code>zfsbootmenu</code>, <code>grub-efi-amd64</code></li>
+      <li><code>openssh-server</code>, <code>sudo</code></li>
+      <li><code>wireguard-tools</code>, <code>wireguard</code></li>
+      <li><code>bpftool</code>, <code>bpftrace</code>, <code>bcc-tools</code></li>
+      <li><code>nftables</code>, <code>chrony</code></li>
+      <li><code>systemd-resolved</code>, <code>network-manager</code></li>
+      <li><code>shim-signed</code>, <code>mokutil</code></li>
+    </ul>
+
+    <h3>Desktop (additional)</h3>
+    <ul>
+      <li>GNOME Shell, GDM3</li>
+      <li>Firefox ESR</li>
+      <li>GNOME Terminal, Files, Settings</li>
+    </ul>
+
+    <h2>Package freshness</h2>
+    <p>
+      The darksite is a snapshot of the Debian archive at the time the ISO was built.
+      Packages in the darksite are the versions available at build time &mdash; they may not be
+      the latest available from Debian.
+    </p>
+    <p>
+      For security-sensitive air-gap deployments, update packages after installation using
+      a managed update process &mdash; either bring an updated offline mirror on USB, use a local
+      Debian mirror inside the network perimeter, or synchronise a Squid proxy cache for
+      controlled internet access to <code>security.debian.org</code>.
+    </p>
+
+    <div class="callout warning">
+      <strong>Warning</strong>
+      The built-in darksite is a snapshot baked at ISO build time. To add new packages at
+      runtime, use a DEBZ-DARK disk (see below) rather than modifying the live squashfs.
+    </div>
+
+    <h2 id="debz-dark">DEBZ-DARK: bring your own repo disk</h2>
+    <p>
+      For sites with large or frequently-updated package sets, container images, Helm charts,
+      or CI/CD payloads that are too large to bake into the ISO, debz supports a companion disk
+      labeled <strong>DEBZ-DARK</strong>. At boot, the live system automatically detects and
+      mounts it, merging its contents into <code>/root/darksite/</code> before the APT mirror
+      or installer starts.
+    </p>
+    <p>
+      A DEBZ-DARK disk can be any size — tested up to <strong>8.8&nbsp;TB</strong>. Format
+      it as exFAT (recommended — readable on macOS, Windows, and Linux), EXT4, or NTFS,
+      then set the filesystem label to <code>DEBZ-DARK</code>.
+    </p>
+
+    <h3>Disk layout</h3>
+    <pre><code>DEBZ-DARK:/
+├── apt/          <span class="c"># .deb files → merged into darksite APT repo</span>
+├── images/       <span class="c"># OCI/docker images → available at /root/darksite/images/</span>
+├── helm/         <span class="c"># Helm charts → available at /root/darksite/helm/</span>
+├── ansible/      <span class="c"># Ansible playbooks and roles</span>
+├── salt/         <span class="c"># Salt states and pillars</span>
+├── iso/          <span class="c"># OS images for golden image builds</span>
+├── pipelines/    <span class="c"># CI/CD scripts and pipeline definitions</span>
+└── custom/       <span class="c"># Anything else — bind-mounted as-is</span></code></pre>
+
+    <p>
+      Any directory not in the list above is also automatically bind-mounted under
+      <code>/root/darksite/&lt;name&gt;</code>.
+    </p>
+
+    <h3>Preparing a DEBZ-DARK disk</h3>
+    <pre><code><span class="c"># Format as exFAT and label it DEBZ-DARK (Linux)</span>
+<span class="k">mkfs.exfat</span> -n DEBZ-DARK /dev/sdX
+
+<span class="c"># Or on macOS</span>
+<span class="k">diskutil</span> eraseDisk ExFAT DEBZ-DARK /dev/diskN
+
+<span class="c"># Copy your packages, images, and payloads</span>
+<span class="k">cp</span> *.deb  /media/DEBZ-DARK/apt/
+<span class="k">cp</span> *.tar  /media/DEBZ-DARK/images/
+<span class="k">cp</span> *.tgz  /media/DEBZ-DARK/helm/
+
+<span class="c"># Plug into any debz machine and reboot</span></code></pre>
+
+    <h3>What happens at boot</h3>
+    <ol>
+      <li><code>debz-darksite-extend.service</code> starts before the APT mirror.</li>
+      <li>It scans for a disk labeled <code>DEBZ-DARK</code> using <code>blkid</code>.</li>
+      <li>Mounts it read-only at <code>/mnt/debz-dark</code>.</li>
+      <li>Bind-mounts known subdirectories into <code>/root/darksite/</code>.</li>
+      <li>For <code>apt/</code>: copies <code>.deb</code> files into the darksite pool and
+          rebuilds the package index with <code>dpkg-scanpackages</code>.</li>
+      <li>Logs everything to <code>/var/log/debz/darksite-extend.log</code>.</li>
+    </ol>
+
+    <pre><code><span class="c"># Check DEBZ-DARK mount status</span>
+<span class="k">systemctl</span> status debz-darksite-extend.service
+
+<span class="c"># See what was merged</span>
+<span class="k">journalctl</span> -u debz-darksite-extend --no-pager
+
+<span class="c"># Inspect the extended darksite</span>
+<span class="k">ls</span> /root/darksite/</code></pre>
+
+    <div class="callout info">
+      <strong>APT repo rebuild</strong> — When the DEBZ-DARK <code>apt/</code> directory contains
+      <code>.deb</code> files, debz automatically runs <code>dpkg-scanpackages</code> to regenerate
+      the <code>Packages</code> index. Your custom packages are immediately installable via
+      <code>apt install &lt;package&gt;</code> without any additional configuration.
+    </div>
+
+    <h2>Post-install APT configuration (air-gap)</h2>
+    <p>
+      After installation, if the system remains air-gapped, configure APT to point to your
+      local mirror instead of the internet:
+    </p>
+    <pre><code><span class="c"># Replace internet mirrors with local mirror</span>
+<span class="k">cat</span> &gt; /etc/apt/sources.list &lt;&lt;EOF
+<span class="s">deb http://apt.local.internal/debian trixie main contrib non-free non-free-firmware</span>
+<span class="s">deb http://apt.local.internal/debian-security trixie-security main</span>
+<span class="s">deb http://apt.local.internal/debian trixie-updates main</span>
+EOF
+
+<span class="k">apt update</span></code></pre>
+
+    <h2>Darksite service details</h2>
+    <p>
+      In the live session, the darksite is managed by a systemd service. You can check its
+      status or restart it if needed:
+    </p>
+    <pre><code><span class="c"># Check darksite service (on live ISO)</span>
+<span class="k">systemctl</span> status debz-darksite.service
+
+<span class="ok">&#9679; debz-darksite.service - debz embedded APT mirror</span>
+<span class="ok">     Loaded: loaded (/usr/lib/systemd/system/debz-darksite.service)</span>
+<span class="ok">     Active: active (running) since 2026-03-15 14:00:00 UTC</span>
+<span class="ok">   Main PID: 1842 (darksite-proxy)</span>
+
+<span class="c"># Test the mirror endpoint</span>
+<span class="k">curl</span> -s http://127.0.0.1:3142/apt/dists/trixie/Release | head -5
+
+<span class="ok">Origin: Debian</span>
+<span class="ok">Label: Debian</span>
+<span class="ok">Suite: testing</span>
+<span class="ok">Codename: trixie</span></code></pre>
+
+    <div class="callout pro">
+      <strong>debz Pro</strong> &mdash; Custom profiles, tailored package sets, and build scripts
+      for your own workloads are available in debz Pro. <a href="../index.html#pro">Learn more</a>
+    </div>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

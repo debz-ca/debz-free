@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Extending debz — debz</title>
+  <meta name="description" content="Complete guide to extending debz — DEBZ-SEED payload structure, postinstall.sh hooks, custom darksite repos, Ansible, Helm, Cilium, node discovery, and drop-in Debian integration."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html" class="active">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Extending debz</div>
+
+    <h1>Extending debz</h1>
+    <p class="page-subtitle">
+      debz is a substrate, not a straitjacket. Every layer from the installer payload to the
+      Kubernetes CNI is designed to be extended without forking. This page covers the full
+      extension surface: the DEBZ-SEED payload structure, <code>postinstall.sh</code> hooks,
+      custom apt mirrors, Ansible, Helm, Cilium, node discovery, and drop-in Debian integration.
+    </p>
+
+    <!-- ── 1. DEBZ-SEED disk ────────────────────────────────────────────────── -->
+    <h2>1. The DEBZ-SEED disk &mdash; full payload reference</h2>
+    <p>
+      Most documentation describes <code>answers.env</code> as the sole content of a DEBZ-SEED
+      disk. That is just the minimum. The installer reads and stages a full payload directory tree.
+      Everything beyond <code>answers.env</code> is optional but processed automatically when present.
+    </p>
+
+    <pre><code><span class="c"># Complete DEBZ-SEED directory structure</span>
+DEBZ-SEED (FAT32, labeled volume)
+├── answers.env          <span class="c"># required — install answers (profile, disk, hostname, user…)</span>
+├── postinstall.sh       <span class="c"># optional — runs in installed chroot on firstboot</span>
+├── repos/               <span class="c"># optional — copied to /etc/apt/sources.list.d/</span>
+│   ├── mycompany.list
+│   └── mycompany.gpg
+├── salt/                <span class="c"># optional — copied to /srv/salt/</span>
+│   ├── top.sls
+│   └── roles/
+├── ansible/             <span class="c"># optional — copied to /etc/debz/ansible/</span>
+│   ├── site.yml
+│   └── inventory/
+└── darksite/            <span class="c"># optional — additional apt package pool merged with ISO mirror</span>
+    └── pool/
+        └── main/</code></pre>
+
+    <h3>How the installer stages the payload</h3>
+    <p>
+      When <code>debz-autoinstall.service</code> detects a <code>DEBZ-SEED</code> labeled disk,
+      it mounts it and processes each directory in order after the core install completes:
+    </p>
+    <ol>
+      <li><strong>repos/</strong> &mdash; all <code>.list</code> and <code>.gpg</code> files are copied into <code>/etc/apt/sources.list.d/</code> in the installed chroot, so they are available from the very first <code>apt-get</code> run on the target system.</li>
+      <li><strong>salt/</strong> &mdash; the entire directory is rsync&rsquo;d into <code>/srv/salt/</code> on the target. If a Salt master is already configured, the states are immediately available on the next highstate.</li>
+      <li><strong>ansible/</strong> &mdash; rsync&rsquo;d into <code>/etc/debz/ansible/</code>. Your <code>postinstall.sh</code> can then run <code>ansible-playbook</code> against this content from within the chroot.</li>
+      <li><strong>darksite/pool/</strong> &mdash; merged into the existing darksite apt pool so <code>apt-get</code> can install packages from your private mirror without any extra repo configuration.</li>
+      <li><strong>postinstall.sh</strong> &mdash; staged to <code>/usr/lib/debz/firstboot/postinstall.sh</code> on the target and executed by <code>debz-firstboot.service</code> on the first boot of the installed system.</li>
+    </ol>
+
+    <div class="callout info">
+      <strong>Order matters</strong>
+      Repos are staged before <code>postinstall.sh</code> runs, so you can <code>apt-get install</code>
+      packages from your private mirror inside the hook without any extra setup.
+    </div>
+
+    <h3>Creating a DEBZ-SEED disk with a full payload</h3>
+    <pre><code><span class="c"># Create a 256 MB DEBZ-SEED image</span>
+<span class="k">truncate</span> -s 256M debz-seed.img
+<span class="k">mkfs.fat</span> -n DEBZ-SEED debz-seed.img
+<span class="k">mount</span> debz-seed.img /mnt/seed
+
+<span class="c"># Required</span>
+<span class="k">cp</span> answers.env /mnt/seed/
+
+<span class="c"># Optional: apt repo + GPG key</span>
+<span class="k">mkdir</span> /mnt/seed/repos
+<span class="k">cp</span> mycompany.list mycompany.gpg /mnt/seed/repos/
+
+<span class="c"># Optional: Ansible playbooks</span>
+<span class="k">mkdir</span> -p /mnt/seed/ansible/inventory
+<span class="k">cp</span> site.yml /mnt/seed/ansible/
+<span class="k">cp</span> hosts.yaml /mnt/seed/ansible/inventory/
+
+<span class="c"># Optional: firstboot hook</span>
+<span class="k">cp</span> postinstall.sh /mnt/seed/
+
+<span class="k">umount</span> /mnt/seed
+
+<span class="c"># Write to USB for physical hardware</span>
+<span class="k">dd</span> if=debz-seed.img of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
+
+    <!-- ── 2. postinstall.sh ──────────────────────────────────────────────────── -->
+    <h2>2. postinstall.sh</h2>
+    <p>
+      <code>postinstall.sh</code> is an arbitrary shell script that runs <em>inside the installed
+      system&rsquo;s chroot</em> on firstboot, after Salt highstate has applied the node&rsquo;s role.
+      It has full access to the installed system&rsquo;s filesystem, <code>apt-get</code>, and the
+      network (if available). Staged repos from the DEBZ-SEED <code>repos/</code> directory are
+      already active.
+    </p>
+
+    <h3>Execution environment</h3>
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Runs as</td><td><code>root</code> inside the installed system chroot</td></tr>
+        <tr><td>Invoked by</td><td><code>debz-firstboot.service</code> (oneshot, After=network-online.target)</td></tr>
+        <tr><td>Working directory</td><td><code>/</code> (root of installed system)</td></tr>
+        <tr><td>Seed payload at</td><td><code>/var/lib/debz/seed-payload/</code></td></tr>
+        <tr><td>Log output</td><td><code>/var/log/debz/firstboot.log</code></td></tr>
+        <tr><td>Exit code</td><td>Non-zero marks firstboot as failed; service reports failure via journald</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Available variables</h3>
+    <p>The following environment variables are exported when <code>postinstall.sh</code> runs:</p>
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Example</th><th>Source</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>DEBZ_HOSTNAME</code></td><td><code>kvm-03</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_PROFILE</code></td><td><code>kvm</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_DISK</code></td><td><code>/dev/sda</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_USERNAME</code></td><td><code>admin</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_TIMEZONE</code></td><td><code>UTC</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_LOCALE</code></td><td><code>en_US.UTF-8</code></td><td>answers.env</td></tr>
+        <tr><td><code>DEBZ_NODE_INDEX</code></td><td><code>3</code></td><td>enrollment / hub.env</td></tr>
+        <tr><td><code>DEBZ_WG1_IP</code></td><td><code>10.78.0.3</code></td><td>hub.env</td></tr>
+        <tr><td><code>DEBZ_WG2_IP</code></td><td><code>10.79.0.3</code></td><td>hub.env</td></tr>
+        <tr><td><code>DEBZ_SEED_PAYLOAD</code></td><td><code>/var/lib/debz/seed-payload</code></td><td>firstboot service</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout info">
+      <strong>Idempotency</strong>
+      <code>debz-firstboot.service</code> is a oneshot that runs exactly once. If you need to
+      re-run your hook during testing, use <code>systemctl reset-failed debz-firstboot.service
+      &amp;&amp; systemctl start debz-firstboot.service</code>.
+    </div>
+
+    <h3>Example 1 &mdash; Add a private apt repository</h3>
+    <pre><code>#!/usr/bin/env bash
+<span class="c"># postinstall.sh — add company apt repo and install agent</span>
+<span class="k">set</span> -euo pipefail
+
+<span class="k">curl</span> -fsSL https://apt.mycompany.com/key.gpg \
+  | <span class="k">gpg</span> --dearmor &gt; /usr/share/keyrings/mycompany.gpg
+
+<span class="k">echo</span> <span class="s">"deb [signed-by=/usr/share/keyrings/mycompany.gpg] \
+  https://apt.mycompany.com/debian trixie main"</span> \
+  &gt; /etc/apt/sources.list.d/mycompany.list
+
+<span class="k">apt-get update</span> -qq
+<span class="k">apt-get install</span> -y mycompany-agent
+
+<span class="k">systemctl enable</span> --now mycompany-agent</code></pre>
+
+    <h3>Example 2 &mdash; Run an Ansible playbook</h3>
+    <pre><code>#!/usr/bin/env bash
+<span class="k">set</span> -euo pipefail
+
+<span class="c"># Ansible + playbooks are staged from the DEBZ-SEED ansible/ directory</span>
+<span class="k">cd</span> /etc/debz/ansible
+<span class="k">ansible-playbook</span> -i inventory/hosts site.yml --connection=local</code></pre>
+
+    <h3>Example 3 &mdash; Clone Salt states from a company repo</h3>
+    <pre><code>#!/usr/bin/env bash
+<span class="k">set</span> -euo pipefail
+
+<span class="k">git clone</span> https://git.mycompany.com/salt-states /srv/salt/mycompany
+
+<span class="c"># Extend the Salt master file-roots with the new path</span>
+<span class="k">echo</span> <span class="s">"- /srv/salt/mycompany"</span> &gt;&gt; /etc/salt/master.d/file-roots.conf
+<span class="k">systemctl reload</span> salt-master 2&gt;/dev/null || true</code></pre>
+
+    <h3>Example 4 &mdash; Full ETL pipeline node setup</h3>
+    <pre><code>#!/usr/bin/env bash
+<span class="c"># postinstall.sh — ETL pipeline node</span>
+<span class="k">set</span> -euo pipefail
+
+<span class="k">apt-get install</span> -y apache-spark python3-pyspark kafka-clients
+
+<span class="c"># Copy pipeline configs from the staged seed payload</span>
+<span class="k">cp</span> -r /var/lib/debz/seed-payload/pipeline-configs /etc/etl/
+
+<span class="c"># Write a node-specific config using injected variables</span>
+<span class="k">cat</span> &gt; /etc/etl/node.conf <span class="s">&lt;&lt;EOF
+ETL_NODE_ID=${DEBZ_NODE_INDEX}
+ETL_NODE_IP=${DEBZ_WG1_IP}
+ETL_HOSTNAME=${DEBZ_HOSTNAME}
+EOF</span>
+
+<span class="k">systemctl enable</span> --now etl-worker</code></pre>
+
+    <!-- ── 3. Custom darksite repos ───────────────────────────────────────────── -->
+    <h2>3. Custom darksite repositories</h2>
+    <p>
+      The debz ISO ships with a full APT mirror baked in under <code>/root/darksite/</code> on the
+      live system. This mirror is what the installer uses when no internet is available. You can
+      augment it with your own packages via two approaches.
+    </p>
+
+    <h3>a) Runtime: DEBZ-SEED <code>darksite/</code> directory</h3>
+    <p>
+      Place <code>.deb</code> files under <code>darksite/pool/main/</code> on the DEBZ-SEED disk.
+      The installer merges this directory into the live darksite pool before running
+      <code>apt-get</code>, so your packages are available during the install and in the installed
+      system via the on-disk mirror. This is per-node and requires no ISO rebuild.
+    </p>
+    <pre><code><span class="c"># Add private debs to the seed disk</span>
+<span class="k">mkdir</span> -p /mnt/seed/darksite/pool/main
+<span class="k">cp</span> mypackage_1.0_amd64.deb /mnt/seed/darksite/pool/main/
+
+<span class="c"># The installer calls dpkg-scanpackages and regenerates Packages.gz automatically</span></code></pre>
+
+    <h3>b) Build-time: bake packages into every ISO</h3>
+    <p>
+      Add packages to the live-build darksite tree before running <code>./deploy.sh build</code>.
+      All debs placed here are included in the ISO&rsquo;s embedded mirror and available on every
+      node deployed from that ISO, with no seed disk required.
+    </p>
+    <pre><code><span class="c"># Place debs into the build tree</span>
+<span class="k">cp</span> mypackage_1.0_amd64.deb \
+  live-build/config/includes.chroot/root/darksite/apt/pool/main/
+
+<span class="c"># Rebuild the ISO</span>
+<span class="k">./deploy.sh</span> build
+
+<span class="c"># All nodes installed from this ISO can install mypackage without internet</span>
+<span class="k">apt-get install</span> mypackage</code></pre>
+
+    <div class="callout info">
+      <strong>Which approach to use?</strong>
+      Use the DEBZ-SEED <code>darksite/</code> directory when your private packages change frequently
+      or differ per-site. Use the build-time approach when every ISO deployment needs the same base
+      packages &mdash; reduces per-node seed disk size and simplifies fleet management.
+    </div>
+
+    <!-- ── 4. Ansible integration ─────────────────────────────────────────────── -->
+    <h2>4. Ansible integration</h2>
+    <p>
+      Ansible, <code>ansible-lint</code>, and <code>ansible-core</code> are pre-installed on the
+      live ISO via <code>cloud-tools.list.chroot</code>. debz does not replace Ansible &mdash; it
+      provides a solid, rollback-capable, ZFS-backed base that Ansible can target like any other
+      Debian system.
+    </p>
+
+    <h3>Bootstrapping Ansible from postinstall.sh</h3>
+    <pre><code><span class="c"># postinstall.sh — pull playbooks from Git and converge</span>
+<span class="k">set</span> -euo pipefail
+
+<span class="k">git clone</span> https://git.mycompany.com/ansible /etc/debz/ansible
+
+<span class="c"># Install collections offline from the seed payload</span>
+<span class="k">ansible-galaxy collection install</span> \
+  /var/lib/debz/seed-payload/collections/community.general.tar.gz
+
+<span class="c"># Converge against localhost using node variables</span>
+<span class="k">ansible-playbook</span> \
+  -i /etc/debz/ansible/inventory/hosts \
+  /etc/debz/ansible/site.yml \
+  --connection=local \
+  --extra-vars "debz_profile=${DEBZ_PROFILE} debz_index=${DEBZ_NODE_INDEX}"</code></pre>
+
+    <h3>Dynamic inventory using Salt grains</h3>
+    <p>
+      If you already use Salt for configuration management, you can drive Ansible with a dynamic
+      inventory script that queries Salt grains. This gives you a single source of truth for host
+      metadata across both tools.
+    </p>
+    <pre><code>#!/usr/bin/env python3
+<span class="c"># salt-inventory.py — dynamic Ansible inventory from Salt grains</span>
+import json, subprocess
+
+result = subprocess.run(
+    ['salt', '*', 'grains.items', '--out=json'],
+    capture_output=True, text=True
+)
+grains = json.loads(result.stdout)
+
+inventory = {'_meta': {'hostvars': {}}, 'debz': {'hosts': []}}
+for host, g in grains.items():
+    inventory['debz']['hosts'].append(host)
+    inventory['_meta']['hostvars'][host] = {
+        'ansible_host': g.get('debz:wg1_ip'),
+        'debz_role': g.get('debz:role'),
+        'debz_index': g.get('debz:node_index'),
+    }
+
+print(json.dumps(inventory, indent=2))</code></pre>
+
+    <pre><code><span class="c"># Run a playbook against all debz nodes via Salt-sourced inventory</span>
+<span class="k">ansible-playbook</span> -i salt-inventory.py site.yml</code></pre>
+
+    <h3>Targeting debz node roles in playbooks</h3>
+    <pre><code><span class="c"># site.yml — role-targeted playbook for debz nodes</span>
+- name: Base configuration
+  hosts: debz
+  become: true
+  tasks:
+    - name: Ensure chrony is running
+      ansible.builtin.service:
+        name: chrony
+        state: started
+        enabled: true
+
+- name: KVM hypervisor tuning
+  hosts: debz
+  become: true
+  when: debz_role == 'kvm'
+  tasks:
+    - name: Set huge pages
+      ansible.posix.sysctl:
+        name: vm.nr_hugepages
+        value: '1024'</code></pre>
+
+    <!-- ── 5. Helm + Kubernetes ────────────────────────────────────────────────── -->
+    <h2>5. Helm + Kubernetes</h2>
+    <p>
+      Helm is pre-installed on all debz nodes via <code>0075-cloud-tools.hook.chroot</code>.
+      <code>kubectl</code>, <code>kubeadm</code>, and <code>kubelet</code> are also pre-installed.
+      After <code>debz-k8s-join</code> completes, the cluster behaves exactly like any kubeadm
+      cluster &mdash; deploy Helm charts exactly as you would on any Kubernetes distribution.
+    </p>
+
+    <h3>Deploy common platform charts</h3>
+    <pre><code><span class="c"># Add chart repos</span>
+<span class="k">helm repo add</span> ingress-nginx https://kubernetes.github.io/ingress-nginx
+<span class="k">helm repo add</span> jetstack     https://charts.jetstack.io
+<span class="k">helm repo add</span> argo         https://argoproj.github.io/argo-helm
+<span class="k">helm repo update</span>
+
+<span class="c"># Install nginx ingress controller</span>
+<span class="k">helm install</span> ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+
+<span class="c"># Install cert-manager with CRDs</span>
+<span class="k">helm install</span> cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set installCRDs=true
+
+<span class="c"># Install ArgoCD</span>
+<span class="k">helm install</span> argocd argo/argo-cd \
+  --namespace argocd --create-namespace</code></pre>
+
+    <h3>All traffic over wg2</h3>
+    <p>
+      Every debz Kubernetes node binds its kubelet to its <code>wg2</code> address
+      (<code>10.79.0.x</code>). Cilium uses the same plane as its underlay. When deploying
+      services, pods will communicate exclusively over the encrypted WireGuard mesh &mdash;
+      no unencrypted lateral traffic is possible.
+    </p>
+    <pre><code><span class="c"># Verify node IPs are wg2 addresses</span>
+<span class="k">kubectl get nodes</span> -o wide
+<span class="c"># NAME        STATUS   ROLES    AGE   VERSION   INTERNAL-IP</span>
+<span class="c"># master-01   Ready    control  12m   v1.30.0   10.79.0.1</span>
+<span class="c"># kvm-02      Ready    worker   8m    v1.30.0   10.79.0.2</span>
+<span class="c"># kvm-03      Ready    worker   6m    v1.30.0   10.79.0.3</span></code></pre>
+
+    <!-- ── 6. Cilium + Hubble ─────────────────────────────────────────────────── -->
+    <h2>6. Cilium + Hubble</h2>
+    <p>
+      Cilium is installed as the Kubernetes CNI by <code>debz-autobootstrap</code> with
+      <code>kubeProxyReplacement=true</code>. It operates on top of the wg2 plane
+      (<code>10.79.x.x</code>), meaning all east-west Kubernetes traffic is double-encrypted:
+      once by WireGuard at the kernel level, and once by Cilium&rsquo;s eBPF policies.
+    </p>
+
+    <h3>Hubble observability</h3>
+    <p>
+      Hubble is Cilium&rsquo;s observability layer. The Hubble CLI is pre-installed on all debz
+      nodes. It gives you real-time visibility into every L3/L4/L7 flow in your cluster without
+      any sidecars, agents, or service mesh overhead.
+    </p>
+    <pre><code><span class="c"># Check Hubble status</span>
+<span class="k">hubble status</span>
+
+<span class="c"># Observe live flows — all namespaces</span>
+<span class="k">hubble observe</span> --follow
+
+<span class="c"># Filter: only flows to port 443</span>
+<span class="k">hubble observe</span> --follow --port 443
+
+<span class="c"># Filter: flows from a specific pod</span>
+<span class="k">hubble observe</span> --from-pod default/my-app --follow
+
+<span class="c"># Access Hubble UI in a browser via port-forward</span>
+<span class="k">kubectl port-forward</span> -n kube-system svc/hubble-ui 12000:80
+<span class="c"># Open: http://localhost:12000</span></code></pre>
+
+    <h3>eBPF tooling on all nodes</h3>
+    <p>
+      <code>bpftool</code>, <code>bpftrace</code>, and <code>bcc-tools</code> are pre-installed
+      on every debz node. Attach kernel probes, trace syscalls, inspect maps, and dump loaded
+      programs without rebooting or installing anything.
+    </p>
+    <pre><code><span class="c"># List all loaded eBPF programs (including Cilium's)</span>
+<span class="k">bpftool prog list</span>
+
+<span class="c"># Trace TCP retransmits in real time</span>
+<span class="k">bpftrace</span> -e 'kprobe:tcp_retransmit_skb { printf("%s\n", comm); }'
+
+<span class="c"># Count syscalls by process name using bcc</span>
+<span class="k">syscount</span> -p $(pgrep kubelet)</code></pre>
+
+    <!-- ── 7. Node discovery ───────────────────────────────────────────────────── -->
+    <h2>7. Node discovery</h2>
+    <p>
+      debz uses a two-layer discovery system. Enrolled nodes are tracked in Salt mine. Unenrolled
+      live nodes broadcast their presence over mDNS. Both sources are visible in the Web UI.
+    </p>
+
+    <h3>a) Enrolled nodes &mdash; Salt mine</h3>
+    <p>
+      Once a node has enrolled and highstate has run, its identity, role, and WireGuard IPs are
+      stored as Salt grains and available via Salt mine queries from anywhere in the cluster.
+    </p>
+    <pre><code><span class="c"># List all enrolled nodes with role, node_index, and WG IPs</span>
+<span class="k">salt</span> '*' grains.items
+
+<span class="c"># Filter: only KVM nodes</span>
+<span class="k">salt</span> -G 'debz:role:kvm' grains.item debz:wg1_ip debz:node_index
+
+<span class="c"># Check all nodes are reachable</span>
+<span class="k">salt</span> '*' test.ping</code></pre>
+
+    <h3>b) Unenrolled live nodes &mdash; Avahi mDNS</h3>
+    <p>
+      When a debz live session boots, <code>debz-announce.service</code> broadcasts a
+      <code>_debz._tcp</code> mDNS service record on the local network. The MASTER&rsquo;s Web UI
+      discovers these records and presents unenrolled nodes as enrollment targets in the Spawn
+      panel.
+    </p>
+    <pre><code><span class="c"># Browse for live debz nodes on the LAN</span>
+<span class="k">avahi-browse</span> -rt _debz._tcp
+
+<span class="c"># Output format:</span>
+<span class="c"># = eth0 IPv4 debz-live-kvm-03  _debz._tcp  local</span>
+<span class="c">#   hostname = [kvm-03.local]</span>
+<span class="c">#   address = [10.0.1.43]</span>
+<span class="c">#   port = [8080]</span>
+<span class="c">#   txt = [profile=server version=1]</span></code></pre>
+
+    <div class="callout info">
+      <strong>Web UI enrollment</strong>
+      The Web UI Spawn panel shows discovered mDNS nodes as &ldquo;Discovered &mdash; click to
+      enroll&rdquo; tiles. Clicking one opens the enrollment wizard pre-filled with the detected IP
+      and hostname, requiring only template selection and confirmation to proceed.
+    </div>
+
+    <h3>c) Manual enrollment</h3>
+    <p>
+      If a node is on a different broadcast domain or mDNS is unavailable, you can enroll it
+      manually by entering its IP address in the Spawn panel&rsquo;s manual entry field. The MASTER
+      will attempt to reach it over wg0 and initiate enrollment.
+    </p>
+    <pre><code><span class="c"># Manual enrollment from the command line on MASTER</span>
+<span class="k">debz-enroll-peer</span> --ip 10.0.2.50 --hostname storage-06 --role storage</code></pre>
+
+    <!-- ── 8. Drop-in Debian ───────────────────────────────────────────────────── -->
+    <h2>8. Integrating into an existing environment</h2>
+    <p>
+      debz is Debian 13 (trixie) underneath &mdash; the same <code>dpkg</code>, the same APT, the
+      same package namespace, the same syscall ABI. If your team already uses Debian, replacing
+      your current install ISO with debz is the fastest path to ZFS boot environments, WireGuard
+      mesh, and cluster tooling without touching a single existing workflow.
+    </p>
+
+    <h3>What you keep</h3>
+    <table>
+      <thead>
+        <tr><th>Existing tooling</th><th>Works on debz?</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Ansible playbooks</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Target debz nodes exactly like any Debian host</td>
+        </tr>
+        <tr>
+          <td>Terraform / Pulumi</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Provision via Proxmox API, AWS EC2, GCP, Azure ARM directly</td>
+        </tr>
+        <tr>
+          <td>Chef / Puppet</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Install the agent in <code>postinstall.sh</code> or from apt</td>
+        </tr>
+        <tr>
+          <td>Docker / Podman containers</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Both are available; images and compose files work as-is</td>
+        </tr>
+        <tr>
+          <td>Kubernetes workloads</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Same kubeadm join, same kubectl, same manifest YAML</td>
+        </tr>
+        <tr>
+          <td>Existing Debian apt repos</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Add to <code>/etc/apt/sources.list.d/</code> as normal</td>
+        </tr>
+        <tr>
+          <td>systemd units and timers</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>Standard systemd; debz adds units with <code>debz-</code> prefix only</td>
+        </tr>
+        <tr>
+          <td>CI/CD pipelines</td>
+          <td class="yes">&#10003; Unchanged</td>
+          <td>SSH access works immediately; GitLab runner, Jenkins agent, etc.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>What you gain</h3>
+    <ul>
+      <li><strong>ZFS on root</strong> &mdash; every package operation is preceded by a snapshot. Roll back any bad upgrade in 30 seconds.</li>
+      <li><strong>Boot environments</strong> &mdash; ZFSBootMenu lets you boot into any prior OS snapshot from the bootloader menu.</li>
+      <li><strong>Encrypted WireGuard mesh</strong> &mdash; four planes with automatic peer management. Lateral traffic is always encrypted.</li>
+      <li><strong>Golden image pipeline</strong> &mdash; stamp 50 CoW clones of any node in minutes. Each clone is ~1 MB until written.</li>
+      <li><strong>Air-gap capability</strong> &mdash; the embedded apt mirror means the ISO and all installed packages are available with no internet.</li>
+    </ul>
+
+    <h3>No lock-in: vendor APIs, not wrappers</h3>
+    <p>
+      debz uses provider APIs directly &mdash; Proxmox REST API, AWS EC2, GCP Compute, Azure ARM.
+      There are no debz-specific wrappers between your code and the cloud. <code>deploy.sh</code>
+      is a thin orchestrator that calls standard tools (<code>qemu-img</code>, <code>virsh</code>,
+      <code>pvesh</code>, <code>aws ec2</code>). If you outgrow it, replace it.
+    </p>
+
+    <!-- ── 9. Use-case examples ───────────────────────────────────────────────── -->
+    <h2>9. What can you build?</h2>
+    <p>
+      debz is a general-purpose host OS. The ZFS + WireGuard + Salt + Kubernetes stack is not
+      prescriptive &mdash; it&rsquo;s a set of primitives you combine for your workload. Here are
+      nine reference architectures.
+    </p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">&#127760;</div>
+        <h3>Landing sites + web apps</h3>
+        <p>Run nginx or Caddy on a KVM or STORAGE node. ZFS snapshots protect <code>/srv/www</code>
+        every 15 minutes. Replicate over wg3 to an offsite node for instant failover. Deploy via
+        Ansible or Helm. Serve from bare metal or a Proxmox VM with sub-millisecond disk I/O.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128248;</div>
+        <h3>Remote desktop (VDI)</h3>
+        <p>Deploy the VDI template: mediamtx ingests a wf-recorder SRT stream and re-publishes it
+        as HLS and WebRTC. Any browser connects to port :8889 &mdash; zero client install required.
+        Optional NVIDIA nvenc for GPU-accelerated encode. Wayland desktop fully headless.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#9889;</div>
+        <h3>MicroVMs + serverless</h3>
+        <p>Firecracker is pre-installed on KVM nodes. MicroVMs boot in under 125 ms. Stamp 50
+        CoW clones of a golden Firecracker rootfs in minutes. Combine with the golden image
+        pipeline to achieve serverless-like cold-start times on bare metal you own.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128452;&#65039;</div>
+        <h3>Storage cluster</h3>
+        <p>STORAGE template nodes export ZFS pools over NFS, iSCSI (tgt), and Samba via wg3.
+        <code>zfs send/recv</code> replicates datasets to TrueNAS, another debz node, or a cloud
+        VM. 15-minute snapshots of <code>/srv</code> give a 15-minute RPO with zero additional
+        tooling.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128200;</div>
+        <h3>ETL pipeline</h3>
+        <p>KVM nodes running Apache Spark and Kafka with data on ZFS. The 15-minute
+        <code>/srv</code> snapshot schedule protects pipeline state. Use <code>postinstall.sh</code>
+        to install pipeline-specific packages and configs from the DEBZ-SEED payload. Node index
+        and wg1 IP are available as environment variables for per-node configuration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#10024;</div>
+        <h3>Kubernetes cluster</h3>
+        <p>MASTER + KVM worker nodes with Cilium CNI, Hubble observability, and Helm. All east-west
+        traffic over wg2. <code>debz-k8s-join</code> fetches the join command from Salt mine
+        automatically. Workers join and are fully operational in under 90 seconds from first boot.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#9992;&#65039;</div>
+        <h3>Air-gapped data centre</h3>
+        <p>Build the ISO once with your private packages baked into the darksite mirror. Deploy
+        100 nodes from USB or PXE with zero internet access at any stage &mdash; install, firstboot,
+        highstate, and package upgrades all run from the embedded mirror. DEBZ-SEED darksite
+        directories add site-specific packages per rack.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128640;</div>
+        <h3>Dev / CI lab</h3>
+        <p>Build one golden image per test environment definition. <code>debz-stamp-identity</code>
+        CoW-clones a fresh environment in 30 seconds with a unique hostname, machine-id, and
+        WireGuard identity. Delete the clone after the CI run. Storage cost is ~1 MB per environment
+        until divergence. Combine with Firecracker for sub-second environment creation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#127968;</div>
+        <h3>Hybrid cloud</h3>
+        <p>The same Salt states, Ansible playbooks, and Helm charts target on-prem KVM nodes and
+        AWS EC2, GCP Compute, or Azure ARM VMs simultaneously. WireGuard wg1 extends across cloud
+        providers &mdash; Salt master on-prem reaches cloud minions over the same management plane.
+        No VPC peering, no transit gateway, no lock-in.</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

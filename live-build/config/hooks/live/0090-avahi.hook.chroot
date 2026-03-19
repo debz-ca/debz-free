@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# 0090-avahi.hook.chroot
+# Bakes Avahi mDNS node-discovery tooling into the live ISO squashfs.
+#
+# Creates:
+#   /usr/local/sbin/debz-avahi-announce  — reads install-manifest.env and
+#     publishes a _debz._tcp Avahi service record so other live nodes on the
+#     local segment can discover this node without DNS.
+#
+#   /usr/local/sbin/debz-avahi-discover  — browses for _debz._tcp peers and
+#     emits a JSON array describing each discovered node.
+#
+#   /usr/lib/systemd/system/debz-avahi-announce.service  — runs
+#     debz-avahi-announce once after avahi-daemon is up.
+#
+# The announce service is enabled at build time so it fires automatically
+# on every live boot once avahi-daemon starts.
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [avahi] $*" >&2; }
+
+# ---------------------------------------------------------------------------
+# debz-avahi-announce
+# ---------------------------------------------------------------------------
+
+log "Creating /usr/local/sbin/debz-avahi-announce"
+
+mkdir -p /usr/local/sbin
+
+cat > /usr/local/sbin/debz-avahi-announce <<'ANNOUNCE'
+#!/usr/bin/env bash
+set -euo pipefail
+# debz-avahi-announce — publish this node's identity via Avahi mDNS
+# Reads DEBZ_PROFILE (role), DEBZ_NODE_INDEX from /etc/debz/install-manifest.env.
+# Color is derived from index: index 1-7 = blue, index 8+ = green (matching
+# the wg1 IP scheme: blue=10.78.100.INDEX, green=10.78.200.INDEX).
+
+LOG=/var/log/debz/avahi.log
+MANIFEST=/etc/debz/install-manifest.env
+AVAHI_SVC_DIR=/etc/avahi/services
+AVAHI_SVC=/etc/avahi/services/debz.service
+
+mkdir -p /var/log/debz
+exec >> "${LOG}" 2>&1
+
+log() { printf '[%(%F %T)T] [avahi-announce] %s\n' -1 "$*"; }
+
+# ── Read install-manifest.env ────────────────────────────────────────────────
+
+if [[ ! -f "${MANIFEST}" ]]; then
+    log "WARNING: ${MANIFEST} not found — using defaults"
+fi
+
+DEBZ_PROFILE=""
+DEBZ_NODE_INDEX=""
+
+if [[ -f "${MANIFEST}" ]]; then
+    # shellcheck disable=SC1090
+    source "${MANIFEST}"
+fi
+
+ROLE="${DEBZ_PROFILE:-server}"
+INDEX="${DEBZ_NODE_INDEX:-1}"
+
+# Derive color from index (1-7 = blue fleet, 8+ = green fleet)
+if (( INDEX <= 7 )); then
+    COLOR="blue"
+else
+    COLOR="green"
+fi
+
+HOSTNAME_SHORT="$(hostname -s)"
+
+log "Announcing: hostname=${HOSTNAME_SHORT} role=${ROLE} index=${INDEX} color=${COLOR}"
+
+# ── Write Avahi service XML ───────────────────────────────────────────────────
+
+mkdir -p "${AVAHI_SVC_DIR}"
+
+cat > "${AVAHI_SVC}" <<XML
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">debz-%h</name>
+  <service>
+    <type>_debz._tcp</type>
+    <port>8080</port>
+    <txt-record>role=${ROLE}</txt-record>
+    <txt-record>index=${INDEX}</txt-record>
+    <txt-record>color=${COLOR}</txt-record>
+    <txt-record>version=1</txt-record>
+  </service>
+</service-group>
+XML
+
+log "Wrote ${AVAHI_SVC}"
+
+# ── Reload avahi-daemon ───────────────────────────────────────────────────────
+
+if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+    log "Reloading avahi-daemon"
+    systemctl reload-or-restart avahi-daemon
+else
+    log "avahi-daemon not active — skipping reload (will pick up on next start)"
+fi
+
+log "debz-avahi-announce complete"
+ANNOUNCE
+
+chmod +x /usr/local/sbin/debz-avahi-announce
+
+# ---------------------------------------------------------------------------
+# debz-avahi-discover
+# ---------------------------------------------------------------------------
+
+log "Creating /usr/local/sbin/debz-avahi-discover"
+
+cat > /usr/local/sbin/debz-avahi-discover <<'DISCOVER'
+#!/usr/bin/env bash
+set -euo pipefail
+# debz-avahi-discover — browse for _debz._tcp peers and emit JSON
+#
+# Usage: debz-avahi-discover
+#
+# Output: JSON array of discovered nodes, e.g.:
+#   [
+#     {"hostname":"kvm-01","ip":"169.254.x.x","role":"kvm","index":"3","color":"blue","port":8080},
+#     ...
+#   ]
+#
+# Intended for use by the debz web UI to enumerate unenrolled live nodes
+# on the local network segment before WireGuard enrollment.
+
+# avahi-browse -t (terminate after initial scan) -r (resolve addresses)
+# Output format per resolved record:
+#   =  eth0 IPv4 debz-kvm-01  _debz._tcp   local
+#      hostname = [kvm-01.local]
+#      address = [169.254.1.42]
+#      port = [8080]
+#      txt = ["role=kvm" "index=3" "color=blue" "version=1"]
+
+RAW="$(avahi-browse -t -r _debz._tcp 2>/dev/null || true)"
+
+# Parse blocks separated by blank lines.  Each resolved peer produces a
+# cluster of lines; we accumulate fields until we have a complete record.
+
+declare -a NODES=()
+
+parse_nodes() {
+    local hostname="" ip="" role="" index="" color="" port=""
+
+    flush_node() {
+        if [[ -n "${hostname}" && -n "${ip}" ]]; then
+            # Escape double-quotes in field values for safety
+            hostname="${hostname//\"/\\\"}"
+            ip="${ip//\"/\\\"}"
+            role="${role//\"/\\\"}"
+            index="${index//\"/\\\"}"
+            color="${color//\"/\\\"}"
+            NODES+=("{\"hostname\":\"${hostname}\",\"ip\":\"${ip}\",\"role\":\"${role}\",\"index\":\"${index}\",\"color\":\"${color}\",\"port\":${port:-8080}}")
+        fi
+        hostname="" ip="" role="" index="" color="" port=""
+    }
+
+    while IFS= read -r line; do
+        case "${line}" in
+            "   hostname = ["*)
+                # New record — flush the previous one
+                flush_node
+                hostname="${line#*\[}"
+                hostname="${hostname%\]}"
+                # Strip .local suffix if present
+                hostname="${hostname%.local}"
+                ;;
+            "   address = ["*)
+                ip="${line#*\[}"
+                ip="${ip%\]}"
+                ;;
+            "   port = ["*)
+                port="${line#*\[}"
+                port="${port%\]}"
+                ;;
+            "   txt = ["*)
+                txt="${line#*\[}"
+                txt="${txt%\]}"
+                # txt may contain multiple quoted key=value tokens
+                while [[ "${txt}" =~ \"([^\"]+)\" ]]; do
+                    kv="${BASH_REMATCH[1]}"
+                    txt="${txt#*\"${kv}\"}"
+                    key="${kv%%=*}"
+                    val="${kv#*=}"
+                    case "${key}" in
+                        role)  role="${val}"  ;;
+                        index) index="${val}" ;;
+                        color) color="${val}" ;;
+                    esac
+                done
+                ;;
+        esac
+    done <<< "${RAW}"
+
+    # Flush the last record
+    flush_node
+}
+
+parse_nodes
+
+# Build JSON array
+printf '[\n'
+for i in "${!NODES[@]}"; do
+    if (( i < ${#NODES[@]} - 1 )); then
+        printf '  %s,\n' "${NODES[${i}]}"
+    else
+        printf '  %s\n' "${NODES[${i}]}"
+    fi
+done
+printf ']\n'
+DISCOVER
+
+chmod +x /usr/local/sbin/debz-avahi-discover
+
+# ---------------------------------------------------------------------------
+# debz-avahi-announce.service
+# ---------------------------------------------------------------------------
+
+log "Creating /usr/lib/systemd/system/debz-avahi-announce.service"
+
+mkdir -p /usr/lib/systemd/system
+
+cat > /usr/lib/systemd/system/debz-avahi-announce.service <<'SVC'
+[Unit]
+Description=debz Avahi mDNS node announcement
+Documentation=https://github.com/debz/debz
+After=avahi-daemon.service network.target
+Requires=avahi-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-avahi-announce
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+# ── Enable the service via symlink ────────────────────────────────────────────
+
+log "Enabling debz-avahi-announce.service"
+
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /usr/lib/systemd/system/debz-avahi-announce.service \
+       /etc/systemd/system/multi-user.target.wants/debz-avahi-announce.service
+
+log "Avahi hook complete"

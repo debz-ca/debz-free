@@ -1,0 +1,455 @@
+#!/usr/bin/env bash
+# 0092-salt-reactor.hook.chroot
+# Build-time hook: installs the Salt reactor configuration and WireGuard peer
+# automation infrastructure into the live/installed image.
+#
+# Creates:
+#   /etc/salt/master.d/debz-reactor.conf    — Salt master reactor stanza
+#   /srv/salt/reactor/auto-accept.sls       — Auto-accepts debz-pattern minion keys
+#   /srv/salt/reactor/node-start.sls        — Fires highstate + wg peer push on minion start
+#   /srv/salt/states/wireguard/init.sls     — Full WireGuard conf render from mine data
+#   /srv/salt/states/wireguard/peers.sls    — Peer-only update without Interface restart
+#   /usr/local/sbin/debz-wg-sync            — Standalone fallback peer sync script
+#   /usr/lib/systemd/system/debz-wg-sync.service
+#   /usr/lib/systemd/system/debz-wg-sync.timer
+set -euo pipefail
+
+log() { printf '[%(%F %T)T] [salt-reactor] %s\n' -1 "$*"; }
+
+# ── Directory structure ────────────────────────────────────────────────────────
+
+log "Creating directory structure..."
+mkdir -p \
+    /etc/salt/master.d \
+    /srv/salt/reactor \
+    /srv/salt/states/wireguard \
+    /usr/lib/systemd/system \
+    /etc/systemd/system/timers.target.wants
+
+# ── /etc/salt/master.d/debz-reactor.conf ─────────────────────────────────────
+
+log "Writing /etc/salt/master.d/debz-reactor.conf..."
+cat > /etc/salt/master.d/debz-reactor.conf <<'EOF'
+# debz Salt reactor configuration
+# Handles automatic key acceptance and WireGuard peer propagation.
+reactor:
+  - 'salt/minion/*/start':
+    - /srv/salt/reactor/node-start.sls
+  - 'salt/auth':
+    - /srv/salt/reactor/auto-accept.sls
+EOF
+chmod 644 /etc/salt/master.d/debz-reactor.conf
+
+# ── /srv/salt/reactor/auto-accept.sls ────────────────────────────────────────
+# Reactor SLS: auto-accept minion keys whose IDs match the debz naming pattern.
+# Accepted patterns: kvm-N, stor-N, master-N, vdi-N  (where N is one or more digits)
+# Uses salt.wheel.key.accept — fires as a wheel call from the reactor.
+
+log "Writing /srv/salt/reactor/auto-accept.sls..."
+cat > /srv/salt/reactor/auto-accept.sls <<'EOF'
+{%- set minion_id = data.get('id', '') %}
+{%- set act       = data.get('act', '') %}
+
+{#- Only process pending (pre-accept) auth events #}
+{%- if act == 'pend' and minion_id | regex_match('^(kvm|stor|master|vdi)-\d+$') %}
+
+debz_auto_accept_{{ minion_id }}:
+  wheel.key.accept:
+    - match: {{ minion_id }}
+
+{%- else %}
+
+# No action: id={{ minion_id }} act={{ act }} — does not match debz node pattern
+debz_auto_accept_noop:
+  test.noop: []
+
+{%- endif %}
+EOF
+chmod 644 /srv/salt/reactor/auto-accept.sls
+
+# ── /srv/salt/reactor/node-start.sls ─────────────────────────────────────────
+# Reactor SLS: when any minion starts —
+#   1. Apply highstate on the starting node (enforce its role state)
+#   2. Refresh mine on ALL nodes (so WG peer data is current)
+#   3. Push wireguard.peers state to ALL nodes (update peer lists everywhere)
+
+log "Writing /srv/salt/reactor/node-start.sls..."
+cat > /srv/salt/reactor/node-start.sls <<'EOF'
+{%- set minion_id = data.get('id', '') %}
+
+# Step 1: apply highstate on the newly started minion
+debz_highstate_{{ minion_id }}:
+  local.state.apply:
+    - tgt: {{ minion_id }}
+    - timeout: 120
+
+# Step 2: refresh mine data on all managed nodes so peer IPs are up to date
+debz_mine_update_all:
+  local.mine.update:
+    - tgt: '*'
+    - timeout: 30
+
+# Step 3: push updated WireGuard peer list to every node
+debz_wg_peers_all:
+  local.state.apply:
+    - tgt: '*'
+    - args:
+      - mods: wireguard.peers
+    - timeout: 60
+EOF
+chmod 644 /srv/salt/reactor/node-start.sls
+
+# ── /srv/salt/states/wireguard/init.sls ──────────────────────────────────────
+# Full WireGuard config render for all four planes.
+# Reads this node's Interface keys/addresses from grains.
+# Reads peer data from Salt mine (debz_node_info published by every minion).
+# Applies without service restart using: wg syncconf wgN <(wg-quick strip wgN)
+
+log "Writing /srv/salt/states/wireguard/init.sls..."
+cat > /srv/salt/states/wireguard/init.sls <<'EOF'
+{#- ── WireGuard full configuration state ─────────────────────────────────── #}
+{#- Renders /etc/wireguard/wg0..wg3 from mine data and applies live.         #}
+
+{%- set my_id     = grains['id'] %}
+{%- set my_wg0    = grains.get('wg0_ip', '') %}
+{%- set my_wg1    = grains.get('wg1_ip', '') %}
+{%- set my_wg2    = grains.get('wg2_ip', '') %}
+{%- set my_wg3    = grains.get('wg3_ip', '') %}
+
+{#- Fetch all node info from mine; keys are minion IDs #}
+{%- set mine_data = salt['mine.get']('*', 'debz_node_info') %}
+
+{#- Interface definitions: (plane_index, wg_iface, network_prefix, my_ip, listen_port) #}
+{%- set planes = [
+  (0, 'wg0', '10.77', my_wg0, 51820),
+  (1, 'wg1', '10.78', my_wg1, 51821),
+  (2, 'wg2', '10.79', my_wg2, 51822),
+  (3, 'wg3', '10.80', my_wg3, 51823),
+] %}
+
+{%- for plane_idx, iface, prefix, my_ip, listen_port in planes %}
+{%- if my_ip %}
+
+# ── {{ iface }}: render full config ──────────────────────────────────────────
+
+/etc/wireguard/{{ iface }}.conf:
+  file.managed:
+    - mode: '0600'
+    - contents: |
+        [Interface]
+        # debz managed — do not edit by hand; regenerated by Salt wireguard state
+        Address = {{ my_ip }}/16
+        ListenPort = {{ listen_port }}
+        PrivateKey = {{ salt['cmd.run']('cat /etc/debz/wg/' ~ iface ~ '.key 2>/dev/null || echo MISSING', python_shell=False) }}
+{%- for peer_id, peer_grains in mine_data.items() %}
+{%- if peer_id != my_id %}
+{%- set peer_ip = peer_grains.get('wg' ~ plane_idx ~ '_ip', '') %}
+{%- set peer_pub = salt['cmd.run']('cat /etc/debz/wg/pub/' ~ peer_id ~ '-' ~ iface ~ '.pub 2>/dev/null || true', python_shell=False) %}
+{%- if peer_ip and peer_pub %}
+
+        [Peer]
+        # {{ peer_id }}
+        PublicKey = {{ peer_pub }}
+        AllowedIPs = {{ peer_ip }}/32
+        PersistentKeepalive = 25
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+
+debz_wg_syncconf_{{ iface }}:
+  cmd.run:
+    - name: "wg syncconf {{ iface }} <(wg-quick strip {{ iface }})"
+    - shell: /bin/bash
+    - onchanges:
+      - file: /etc/wireguard/{{ iface }}.conf
+    - require:
+      - file: /etc/wireguard/{{ iface }}.conf
+
+debz_wg_log_{{ iface }}:
+  cmd.run:
+    - name: >-
+        printf '[%(%F %T)T] [wireguard] {{ iface }} config applied: %s peers\n' -1
+        "$(wg show {{ iface }} peers 2>/dev/null | wc -l)"
+        >> /var/log/debz/wireguard.log
+    - shell: /bin/bash
+    - onchanges:
+      - file: /etc/wireguard/{{ iface }}.conf
+
+{%- endif %}
+{%- endfor %}
+EOF
+chmod 644 /srv/salt/states/wireguard/init.sls
+
+# ── /srv/salt/states/wireguard/peers.sls ─────────────────────────────────────
+# Peer-only WireGuard update. Does NOT touch [Interface] section.
+# Uses `wg set` to add/update individual peers live without any interface restart.
+
+log "Writing /srv/salt/states/wireguard/peers.sls..."
+cat > /srv/salt/states/wireguard/peers.sls <<'EOF'
+{#- ── WireGuard peer-only update state ───────────────────────────────────── #}
+{#- Updates [Peer] entries for all four WireGuard interfaces without touching  #}
+{#- [Interface] or restarting the link.  Uses wg set for each peer.           #}
+
+{%- set my_id    = grains['id'] %}
+{%- set mine_data = salt['mine.get']('*', 'debz_node_info') %}
+
+{#- plane_idx maps to grain key suffix and interface name #}
+{%- set planes = [
+  (0, 'wg0'),
+  (1, 'wg1'),
+  (2, 'wg2'),
+  (3, 'wg3'),
+] %}
+
+{%- for plane_idx, iface in planes %}
+{%- if salt['cmd.run']('ip link show ' ~ iface ~ ' 2>/dev/null', python_shell=False) %}
+
+# ── {{ iface }}: update peers only ───────────────────────────────────────────
+
+{%- for peer_id, peer_grains in mine_data.items() %}
+{%- if peer_id != my_id %}
+{%- set peer_ip  = peer_grains.get('wg' ~ plane_idx ~ '_ip', '') %}
+{%- set peer_pub = salt['cmd.run']('cat /etc/debz/wg/pub/' ~ peer_id ~ '-' ~ iface ~ '.pub 2>/dev/null || true', python_shell=False) | trim %}
+{%- if peer_ip and peer_pub %}
+
+debz_wg_set_peer_{{ iface }}_{{ peer_id | replace('-', '_') }}:
+  cmd.run:
+    - name: >-
+        wg set {{ iface }}
+        peer {{ peer_pub }}
+        allowed-ips {{ peer_ip }}/32
+        persistent-keepalive 25
+    - unless: >-
+        wg show {{ iface }} peers 2>/dev/null | grep -qF '{{ peer_pub }}'
+
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+
+debz_wg_peers_log_{{ iface }}:
+  cmd.run:
+    - name: >-
+        printf '[%(%F %T)T] [wireguard] {{ iface }} peer update complete: %s peers\n' -1
+        "$(wg show {{ iface }} peers 2>/dev/null | wc -l)"
+        >> /var/log/debz/wireguard.log
+    - shell: /bin/bash
+
+{%- endif %}
+{%- endfor %}
+EOF
+chmod 644 /srv/salt/states/wireguard/peers.sls
+
+# ── /usr/local/sbin/debz-wg-sync ─────────────────────────────────────────────
+# Standalone fallback script. Does NOT require Salt reactor to have fired.
+# Queries salt-call mine locally, generates peer files, applies via wg addconf.
+# Safe to run repeatedly — idempotent.
+
+log "Writing /usr/local/sbin/debz-wg-sync..."
+cat > /usr/local/sbin/debz-wg-sync <<'SCRIPT'
+#!/usr/bin/env bash
+# debz-wg-sync — standalone WireGuard peer synchronisation fallback.
+# Queries the local Salt mine cache and updates all four WireGuard interfaces
+# with current peer lists using wg addconf. Safe to run repeatedly.
+#
+# Runs every 5 minutes via debz-wg-sync.timer to ensure peers stay in sync
+# even when the Salt reactor has not fired (e.g. during initial cluster boot).
+set -euo pipefail
+
+LOG_DIR="/var/log/debz"
+LOG_FILE="${LOG_DIR}/wireguard.log"
+WG_KEYS_DIR="/etc/debz/wg"
+WG_PUB_DIR="${WG_KEYS_DIR}/pub"
+MINE_CACHE_DIR="/var/cache/salt/minion/proc"
+TMP_DIR="$(mktemp -d /tmp/debz-wg-sync.XXXXXX)"
+
+log() { printf '[%(%F %T)T] [debz-wg-sync] %s\n' -1 "$*" | tee -a "${LOG_FILE}"; }
+die() { log "FATAL: $*"; exit 1; }
+
+cleanup() { rm -rf "${TMP_DIR}"; }
+trap cleanup EXIT
+
+mkdir -p "${LOG_DIR}"
+
+# ── Sanity checks ─────────────────────────────────────────────────────────────
+
+if ! command -v wg >/dev/null 2>&1; then
+    log "wg not found — WireGuard not installed, skipping"
+    exit 0
+fi
+
+if ! command -v salt-call >/dev/null 2>&1; then
+    log "salt-call not found — cannot query mine, skipping"
+    exit 0
+fi
+
+# ── Read own identity ─────────────────────────────────────────────────────────
+
+MY_ID="$(salt-call --local grains.get id --out=txt 2>/dev/null | awk '{print $NF}' || hostname -s)"
+MY_WG0="$(salt-call --local grains.get wg0_ip --out=txt 2>/dev/null | awk '{print $NF}' || true)"
+MY_WG1="$(salt-call --local grains.get wg1_ip --out=txt 2>/dev/null | awk '{print $NF}' || true)"
+MY_WG2="$(salt-call --local grains.get wg2_ip --out=txt 2>/dev/null | awk '{print $NF}' || true)"
+MY_WG3="$(salt-call --local grains.get wg3_ip --out=txt 2>/dev/null | awk '{print $NF}' || true)"
+
+log "Local identity: id=${MY_ID} wg0=${MY_WG0:-unset} wg1=${MY_WG1:-unset} wg2=${MY_WG2:-unset} wg3=${MY_WG3:-unset}"
+
+# ── Fetch mine data ───────────────────────────────────────────────────────────
+
+MINE_JSON="${TMP_DIR}/mine.json"
+if ! salt-call mine.get '*' debz_node_info --out=json > "${MINE_JSON}" 2>/dev/null; then
+    log "WARNING: mine.get failed — using empty peer list"
+    echo '{"local": {}}' > "${MINE_JSON}"
+fi
+
+# ── Build peer files per interface ───────────────────────────────────────────
+
+declare -A PLANE_IPS=(
+    [wg0]="${MY_WG0:-}"
+    [wg1]="${MY_WG1:-}"
+    [wg2]="${MY_WG2:-}"
+    [wg3]="${MY_WG3:-}"
+)
+
+declare -A PLANE_GRAIN=(
+    [wg0]="wg0_ip"
+    [wg1]="wg1_ip"
+    [wg2]="wg2_ip"
+    [wg3]="wg3_ip"
+)
+
+IFACES=(wg0 wg1 wg2 wg3)
+
+for iface in "${IFACES[@]}"; do
+    # Only process interfaces that are actually up
+    if ! ip link show "${iface}" >/dev/null 2>&1; then
+        log "${iface}: interface not present, skipping"
+        continue
+    fi
+
+    grain_key="${PLANE_GRAIN[${iface}]}"
+    peers_file="${TMP_DIR}/peers-${iface}.conf"
+    : > "${peers_file}"
+
+    peer_count=0
+
+    # Parse mine JSON with Python (available on all debz nodes)
+    while IFS=$'\t' read -r peer_id peer_ip; do
+        [[ -z "${peer_id}" || -z "${peer_ip}" ]] && continue
+        [[ "${peer_id}" == "${MY_ID}" ]]          && continue
+
+        # Look up pre-distributed public key for this peer+interface
+        pub_key_file="${WG_PUB_DIR}/${peer_id}-${iface}.pub"
+        if [[ ! -f "${pub_key_file}" ]]; then
+            log "${iface}: no public key for peer ${peer_id} at ${pub_key_file} — skipping"
+            continue
+        fi
+        pub_key="$(cat "${pub_key_file}")"
+        [[ -n "${pub_key}" ]] || continue
+
+        printf '[Peer]\n# %s\nPublicKey = %s\nAllowedIPs = %s/32\nPersistentKeepalive = 25\n\n' \
+            "${peer_id}" "${pub_key}" "${peer_ip}" >> "${peers_file}"
+        (( peer_count++ )) || true
+
+    done < <(python3 - "${grain_key}" "${MINE_JSON}" <<'PYEOF'
+import json, sys
+
+grain_key = sys.argv[1]
+mine_file = sys.argv[2]
+
+with open(mine_file) as f:
+    raw = json.load(f)
+
+# salt-call mine.get returns {"local": {"peer_id": grains_dict, ...}}
+data = raw.get('local', raw)
+
+for peer_id, peer_grains in data.items():
+    if not isinstance(peer_grains, dict):
+        continue
+    ip = peer_grains.get(grain_key, '')
+    if ip:
+        print(f"{peer_id}\t{ip}")
+PYEOF
+)
+
+    if [[ "${peer_count}" -eq 0 ]]; then
+        log "${iface}: no peers found in mine data"
+        continue
+    fi
+
+    # Apply peers without touching [Interface] or restarting the link
+    log "${iface}: applying ${peer_count} peer(s) via wg addconf"
+    wg addconf "${iface}" "${peers_file}"
+    log "${iface}: done — $(wg show "${iface}" peers 2>/dev/null | wc -l) total peers now configured"
+done
+
+log "debz-wg-sync complete"
+SCRIPT
+chmod 755 /usr/local/sbin/debz-wg-sync
+
+# ── /usr/lib/systemd/system/debz-wg-sync.service ─────────────────────────────
+
+log "Writing /usr/lib/systemd/system/debz-wg-sync.service..."
+cat > /usr/lib/systemd/system/debz-wg-sync.service <<'SVC'
+[Unit]
+Description=debz WireGuard peer synchronisation
+Documentation=man:debz-wg-sync(8)
+After=network.target salt-minion.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-wg-sync
+StandardOutput=journal
+StandardError=journal
+# Allow up to 60 s for mine query + wg addconf on all four planes
+TimeoutStartSec=60
+SVC
+chmod 644 /usr/lib/systemd/system/debz-wg-sync.service
+
+# ── /usr/lib/systemd/system/debz-wg-sync.timer ───────────────────────────────
+
+log "Writing /usr/lib/systemd/system/debz-wg-sync.timer..."
+cat > /usr/lib/systemd/system/debz-wg-sync.timer <<'TMR'
+[Unit]
+Description=Run debz WireGuard peer sync every 5 minutes
+Documentation=man:debz-wg-sync(8)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=debz-wg-sync.service
+
+[Install]
+WantedBy=timers.target
+TMR
+chmod 644 /usr/lib/systemd/system/debz-wg-sync.timer
+
+# ── Enable timer via symlink ──────────────────────────────────────────────────
+
+log "Enabling debz-wg-sync.timer..."
+ln -sf /usr/lib/systemd/system/debz-wg-sync.timer \
+       /etc/systemd/system/timers.target.wants/debz-wg-sync.timer
+
+# ── Verify shell scripts with shellcheck ──────────────────────────────────────
+
+log "Running shellcheck on /usr/local/sbin/debz-wg-sync..."
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -S warning /usr/local/sbin/debz-wg-sync \
+        && log "shellcheck: debz-wg-sync OK" \
+        || log "WARNING: shellcheck reported issues in debz-wg-sync"
+else
+    log "shellcheck not available in chroot — skipping"
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+log "Salt reactor hook complete. Files created:"
+log "  /etc/salt/master.d/debz-reactor.conf"
+log "  /srv/salt/reactor/auto-accept.sls"
+log "  /srv/salt/reactor/node-start.sls"
+log "  /srv/salt/states/wireguard/init.sls"
+log "  /srv/salt/states/wireguard/peers.sls"
+log "  /usr/local/sbin/debz-wg-sync (755)"
+log "  /usr/lib/systemd/system/debz-wg-sync.service"
+log "  /usr/lib/systemd/system/debz-wg-sync.timer"
+log "  /etc/systemd/system/timers.target.wants/debz-wg-sync.timer -> (symlink)"

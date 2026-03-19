@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Installation Guide — debz</title>
+  <meta name="description" content="Step-by-step guide to installing debz — guided TUI walkthrough, unattended answer files, DEBZ-SEED disk, and post-install verification."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html" class="active">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Installation Guide</div>
+
+  <div class="section-label">Installation</div>
+  <h1>Getting started</h1>
+  <p>
+    There's one manual step: burn the ISO to a USB drive. Everything after that is automatic.
+    The platform has two modes — live desktop and provisioning tool — both start from the
+    same USB key.
+  </p>
+
+  <hr class="divider"/>
+
+  <h2>Mode 1 — Live Desktop</h2>
+  <p>
+    Plug the USB into any machine and select it as the boot device. A full Debian 13 GNOME
+    desktop loads directly from the drive. Nothing is written to the host machine's disks.
+  </p>
+  <p>
+    This mode is <strong>completely ephemeral</strong>. Everything that happens during the
+    session — credentials generated, configurations applied, secrets created — exists only
+    in RAM. When the machine powers off or the USB is removed, it's all gone. This makes it
+    safe to use on any hardware, in any environment, without leaving a trace.
+  </p>
+  <p>
+    The Web UI opens automatically at boot. From there you can explore the platform,
+    test configurations, or choose to install permanently onto the host machine.
+    The install process takes about 90 seconds.
+  </p>
+
+  <h3>Write to USB</h3>
+  <p>On Windows: use <a href="https://rufus.ie" target="_blank">Rufus</a> or <a href="https://etcher.balena.io" target="_blank">Balena Etcher</a>.</p>
+  <p>On Linux or macOS: <code>dd if=debz.iso of=/dev/sdX bs=4M status=progress</code></p>
+  <p>On a VM: attach the ISO directly as a virtual disk — no USB needed.</p>
+
+  <hr class="divider"/>
+
+  <h2>Mode 2 — Provisioning a Node</h2>
+  <p>
+    Boot the ISO on a machine you want to configure permanently. The Web UI guides you
+    through a short wizard — pick a role, pick a disk, confirm. The platform then:
+  </p>
+  <ul>
+    <li>Partitions the disk and creates a ZFS storage pool</li>
+    <li>Installs Debian 13 with the correct packages for the selected role</li>
+    <li>Configures WireGuard mesh networking</li>
+    <li>Sets up automatic snapshots before every system update</li>
+    <li>Optionally enrolls a Secure Boot signing key</li>
+  </ul>
+  <p>
+    When it finishes, the machine reboots into a clean, permanent Debian 13 system.
+    From this point it can be managed directly through the Web UI, handed off to any
+    existing IaC toolchain (Ansible, Terraform, Salt — it doesn't care), or used as
+    a golden image to clone from.
+  </p>
+
+  <h3>Node roles</h3>
+  <p>
+    Each node has a role that determines what gets installed. Roles are not restrictive —
+    they're a starting point. You can always add to them.
+  </p>
+  <ul>
+    <li><strong>Desktop</strong> — GNOME desktop, suitable for workstations or developer machines</li>
+    <li><strong>Server</strong> — headless, SSH, minimal footprint</li>
+    <li><strong>KVM</strong> — KVM hypervisor, ready to run virtual machines</li>
+    <li><strong>Kubernetes</strong> — Kubernetes node, joins the cluster automatically over WireGuard</li>
+    <li><strong>Storage</strong> — dedicated ZFS storage host with replication support</li>
+  </ul>
+
+  <hr class="divider"/>
+
+  <h2>Deploying a Cluster</h2>
+  <p>
+    Provision one node, configure it the way you want, then use the golden image pipeline
+    to clone it. A golden image is a complete snapshot of a fully installed and configured
+    node. Clone it once, clone it fifty times — each copy gets its own unique identity,
+    hostname, and WireGuard keys automatically.
+  </p>
+  <p>
+    Clones can be deployed to any Proxmox host, AWS, Azure, GCP, or bare metal — from
+    the same Web UI, in a single operation. The WireGuard mesh connects them automatically
+    as long as the mesh ports are reachable.
+  </p>
+  <p>
+    The full technical reference for golden images, answer files, and cluster bootstrap
+    is on GitHub.
+  </p>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

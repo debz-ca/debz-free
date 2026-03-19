@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# 0088-ca.hook.chroot
+# Build-time hook: generate a unique CA keypair baked into the ISO.
+# Every ISO build produces a distinct CA. At install time nodes receive certs
+# signed by this CA; mutual TLS is used for tang<->clevis and inter-node trust.
+set -euo pipefail
+
+log() { printf '[%(%F %T)T] [ca-gen] %s\n' -1 "$*"; }
+
+CA_DIR="/etc/debz/ca"
+CA_KEY="${CA_DIR}/ca.key"
+CA_CRT="${CA_DIR}/ca.crt"
+CA_CNF="${CA_DIR}/openssl.cnf"
+CA_IDX="${CA_DIR}/index.txt"
+CA_SRL="${CA_DIR}/serial"
+
+# ── Create directory structure ────────────────────────────────────────────────
+
+log "Creating CA directory: ${CA_DIR}"
+mkdir -p "${CA_DIR}"
+chmod 750 "${CA_DIR}"
+
+# ── Generate 4096-bit RSA CA key ──────────────────────────────────────────────
+
+log "Generating CA private key (4096-bit RSA)..."
+openssl genrsa -out "${CA_KEY}" 4096
+chmod 600 "${CA_KEY}"
+
+# ── Self-sign the CA certificate (10-year validity) ───────────────────────────
+
+log "Self-signing CA certificate (CN=debz ISO CA, 3650 days)..."
+openssl req -new -x509 \
+  -key "${CA_KEY}" \
+  -out "${CA_CRT}" \
+  -days 3650 \
+  -subj "/CN=debz ISO CA/O=debz/OU=ISO Build $(date +%Y-%m-%d)" \
+  -extensions v3_ca \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
+chmod 644 "${CA_CRT}"
+
+# ── Initialise CA database files ──────────────────────────────────────────────
+
+log "Initialising CA serial + index..."
+touch "${CA_IDX}"
+touch "${CA_IDX}.attr"
+# Start serial at a random 8-byte value to avoid predictable sequences
+openssl rand -hex 8 > "${CA_SRL}"
+
+# ── Write openssl.cnf for signing node certs ─────────────────────────────────
+
+log "Writing ${CA_CNF}..."
+cat > "${CA_CNF}" <<'EOCONF'
+# openssl.cnf — debz ISO CA configuration
+# Used by debz-issue-cert to sign node certificates.
+
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir               = /etc/debz/ca
+certs             = $dir
+new_certs_dir     = $dir
+database          = $dir/index.txt
+serial            = $dir/serial
+RANDFILE          = $dir/.rand
+
+private_key       = $dir/ca.key
+certificate       = $dir/ca.crt
+
+default_days      = 365
+default_md        = sha256
+preserve          = no
+policy            = policy_loose
+copy_extensions   = copy
+x509_extensions   = node_cert
+
+[ policy_loose ]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress            = optional
+
+# ── CA certificate extensions ─────────────────────────────────────────────────
+[ v3_ca ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer
+basicConstraints       = critical,CA:TRUE
+keyUsage               = critical,keyCertSign,cRLSign
+
+# ── Node certificate extensions (server + client auth) ───────────────────────
+[ node_cert ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer
+basicConstraints       = CA:FALSE
+keyUsage               = critical,digitalSignature,keyEncipherment
+extendedKeyUsage       = serverAuth,clientAuth
+# subjectAltName is supplied per-cert via -extfile / -extensions at signing time
+
+# ── SAN extension section (referenced by debz-issue-cert) ────────────────────
+[ node_san ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer
+basicConstraints       = CA:FALSE
+keyUsage               = critical,digitalSignature,keyEncipherment
+extendedKeyUsage       = serverAuth,clientAuth
+# subjectAltName is injected at runtime via a temporary ext file
+EOCONF
+chmod 644 "${CA_CNF}"
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+CA_FINGERPRINT="$(openssl x509 -in "${CA_CRT}" -noout -fingerprint -sha256)"
+log "CA generation complete."
+log "  cert : ${CA_CRT}"
+log "  key  : ${CA_KEY} (mode 600)"
+log "  cnf  : ${CA_CNF}"
+log "  ${CA_FINGERPRINT}"

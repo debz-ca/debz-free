@@ -1,0 +1,8 @@
+# Proxmox VE packages (from Proxmox APT repo — added by build-darksite.sh)
+proxmox-ve
+postfix
+open-iscsi
+chrony
+bridge-utils
+nftables
+wireguard-tools

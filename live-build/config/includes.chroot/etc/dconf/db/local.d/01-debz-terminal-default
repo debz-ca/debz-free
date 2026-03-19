@@ -1,0 +1,11 @@
+[org/gnome/terminal/legacy]
+default-show-menubar=false
+confirm-close=false
+
+[org/gnome/terminal/legacy/profiles:]
+default='b1dcc9dd-5262-4d8d-a863-c897e6d979b9'
+list=['b1dcc9dd-5262-4d8d-a863-c897e6d979b9']
+
+[org/gnome/desktop/default-applications/terminal]
+exec='gnome-terminal'
+exec-arg='-x'

@@ -1,0 +1,556 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# 0091-dns.hook.chroot
+# Bakes DNS/DNSSEC infrastructure into the live ISO squashfs.
+#
+# Creates:
+#   /etc/unbound/unbound.conf.d/debz.conf     — DNSSEC validation + DoT upstream
+#                                               + stub-zone for cluster.debz
+#   /usr/local/sbin/debz-pdns-setup           — configures PowerDNS Authoritative
+#                                               on MASTER nodes (first-boot)
+#   /usr/local/sbin/debz-dns-register         — registers a node's A + PTR records
+#                                               in the cluster.debz PowerDNS zone
+#   /etc/debz/pdns.conf.template              — PowerDNS config template
+#
+# MASTER is always the node at wg0 10.77.100.1 (blue fleet index 1).
+# PowerDNS listens on 10.77.100.1:5300 to avoid conflicts with system resolvers.
+# Unbound listens locally and forwards cluster.debz queries to that stub.
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [dns] $*" >&2; }
+
+# ---------------------------------------------------------------------------
+# Unbound configuration: DNSSEC + DoT + cluster.debz stub
+# ---------------------------------------------------------------------------
+
+log "Writing /etc/unbound/unbound.conf.d/debz.conf"
+
+mkdir -p /etc/unbound/unbound.conf.d
+
+cat > /etc/unbound/unbound.conf.d/debz.conf <<'UNBOUNDCONF'
+# /etc/unbound/unbound.conf.d/debz.conf
+# debz DNS configuration — DNSSEC validation, DNS-over-TLS upstream,
+# and stub zone for the internal cluster.debz domain.
+#
+# MASTER PowerDNS always runs at 10.77.100.1:5300 (wg0, blue index 1).
+
+server:
+    # ── DNSSEC ──────────────────────────────────────────────────────────────
+    # Validate DNSSEC for all external queries using the RFC 5011 root anchor.
+    # unbound-anchor must populate this file before unbound starts.
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+
+    # ── Logging ─────────────────────────────────────────────────────────────
+    logfile: "/var/log/debz/unbound.log"
+    verbosity: 1
+
+    # ── Access control ──────────────────────────────────────────────────────
+    # Allow queries from localhost and all WireGuard planes:
+    #   wg0 10.77.0.0/16  wg1 10.78.0.0/16  wg2 10.79.0.0/16  wg3 10.80.0.0/16
+    access-control: 127.0.0.0/8 allow
+    access-control: 10.77.0.0/16 allow
+    access-control: 10.78.0.0/16 allow
+    access-control: 10.79.0.0/16 allow
+    access-control: 10.80.0.0/16 allow
+
+    # ── Interface ───────────────────────────────────────────────────────────
+    # Listen on loopback only; WireGuard planes reach it via localhost or
+    # the node's own wg0 IP after enrollment.
+    interface: 127.0.0.1
+    port: 53
+
+    # ── Privacy / hardening ─────────────────────────────────────────────────
+    hide-identity: yes
+    hide-version: yes
+    qname-minimisation: yes
+
+    # ── Local cluster.debz — served by PowerDNS stub ────────────────────────
+    # Do not validate DNSSEC for the internal zone (PowerDNS is not signed).
+    domain-insecure: "cluster.debz"
+    # Ensure reverse zones for WireGuard planes are also treated as local.
+    domain-insecure: "77.10.in-addr.arpa"
+    domain-insecure: "78.10.in-addr.arpa"
+    domain-insecure: "79.10.in-addr.arpa"
+    domain-insecure: "80.10.in-addr.arpa"
+
+# ── Stub zone: cluster.debz → MASTER PowerDNS ───────────────────────────────
+stub-zone:
+    name: "cluster.debz"
+    stub-addr: 10.77.100.1@5300
+
+# ── Stub zones: reverse lookup for WireGuard planes ─────────────────────────
+stub-zone:
+    name: "77.10.in-addr.arpa"
+    stub-addr: 10.77.100.1@5300
+
+stub-zone:
+    name: "78.10.in-addr.arpa"
+    stub-addr: 10.77.100.1@5300
+
+stub-zone:
+    name: "79.10.in-addr.arpa"
+    stub-addr: 10.77.100.1@5300
+
+stub-zone:
+    name: "80.10.in-addr.arpa"
+    stub-addr: 10.77.100.1@5300
+
+# ── Forward zone: everything else → Cloudflare DoT ──────────────────────────
+forward-zone:
+    name: "."
+    forward-tls-upstream: yes
+    forward-addr: 1.1.1.1@853#cloudflare-dns.com
+    forward-addr: 1.0.0.1@853#cloudflare-dns.com
+UNBOUNDCONF
+
+log "Wrote /etc/unbound/unbound.conf.d/debz.conf"
+
+# ---------------------------------------------------------------------------
+# PowerDNS config template (filled in by debz-pdns-setup at runtime)
+# ---------------------------------------------------------------------------
+
+log "Writing /etc/debz/pdns.conf.template"
+
+mkdir -p /etc/debz
+
+cat > /etc/debz/pdns.conf.template <<'PDNSTEMPLATE'
+# /etc/debz/pdns.conf.template
+# PowerDNS Authoritative Server configuration for cluster.debz.
+# Filled in by debz-pdns-setup at first-boot on MASTER nodes.
+# Do NOT edit directly — regenerate via debz-pdns-setup.
+#
+# MASTER_WG0_IP  — replaced with the actual wg0 IP (10.77.100.1)
+# PDNS_API_KEY_PLACEHOLDER — replaced with a random secret at setup time
+
+launch=gsqlite3
+gsqlite3-database=/var/lib/powerdns/cluster.db
+
+# Bind to wg0 management IP on port 5300 (non-standard to avoid resolver conflict)
+local-address=MASTER_WG0_IP
+local-port=5300
+
+# HTTP API — bound to localhost only; accessed by debz-dns-register
+api=yes
+api-key=PDNS_API_KEY_PLACEHOLDER
+webserver=yes
+webserver-address=127.0.0.1
+webserver-port=8053
+webserver-allow-from=127.0.0.1
+
+# Logging
+logging-facility=0
+loglevel=4
+
+# Zone transfer — disabled; all updates go through the API
+disable-axfr=yes
+PDNSTEMPLATE
+
+log "Wrote /etc/debz/pdns.conf.template"
+
+# ---------------------------------------------------------------------------
+# debz-pdns-setup — MASTER-only, run at first-boot
+# ---------------------------------------------------------------------------
+
+log "Creating /usr/local/sbin/debz-pdns-setup"
+
+cat > /usr/local/sbin/debz-pdns-setup <<'PDNSSETUP'
+#!/usr/bin/env bash
+set -euo pipefail
+# debz-pdns-setup — configure PowerDNS Authoritative on MASTER nodes.
+#
+# Must be run on the node that will serve cluster.debz (the blue-fleet
+# index-1 node whose wg0 IP is always 10.77.100.1).
+#
+# What this script does:
+#   1. Generates a random API key if none is provided.
+#   2. Writes /etc/powerdns/pdns.conf from the template.
+#   3. Creates the SQLite database with the PowerDNS schema.
+#   4. Creates the SOA + NS records for cluster.debz.
+#   5. Enables and starts pdns.service.
+#
+# Usage:
+#   debz-pdns-setup [--master-ip IP] [--api-key KEY]
+#
+# Flags:
+#   --master-ip  IP   wg0 IP to bind on  (default: 10.77.100.1)
+#   --api-key    KEY  PowerDNS API key   (default: auto-generated)
+
+LOG=/var/log/debz/pdns.log
+TEMPLATE=/etc/debz/pdns.conf.template
+PDNS_CONF=/etc/powerdns/pdns.conf
+DB=/var/lib/powerdns/cluster.db
+ZONE="cluster.debz"
+SERIAL="$(date -u '+%Y%m%d')01"
+
+mkdir -p /var/log/debz
+exec >> "${LOG}" 2>&1
+
+log() { printf '[%(%F %T)T] [pdns-setup] %s\n' -1 "$*"; }
+die() { log "ERROR: $*"; exit 1; }
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+
+MASTER_IP="10.77.100.1"
+API_KEY=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --master-ip) MASTER_IP="$2"; shift 2 ;;
+        --api-key)   API_KEY="$2";   shift 2 ;;
+        *) die "Unknown argument: $1" ;;
+    esac
+done
+
+[[ -n "${API_KEY}" ]] || API_KEY="$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)"
+
+log "MASTER IP: ${MASTER_IP}  zone: ${ZONE}"
+
+# ── Validate dependencies ────────────────────────────────────────────────────
+
+command -v pdns_server  >/dev/null 2>&1 || die "pdns_server not installed"
+command -v sqlite3      >/dev/null 2>&1 || die "sqlite3 not installed"
+[[ -f "${TEMPLATE}" ]]                  || die "Template not found: ${TEMPLATE}"
+
+# ── Write pdns.conf ──────────────────────────────────────────────────────────
+
+log "Writing ${PDNS_CONF}"
+mkdir -p /etc/powerdns
+sed \
+    -e "s|MASTER_WG0_IP|${MASTER_IP}|g" \
+    -e "s|PDNS_API_KEY_PLACEHOLDER|${API_KEY}|g" \
+    "${TEMPLATE}" > "${PDNS_CONF}"
+chmod 0640 "${PDNS_CONF}"
+
+# Persist the API key for use by debz-dns-register
+mkdir -p /etc/debz
+printf 'PDNS_API_KEY=%s\nPDNS_MASTER_IP=%s\n' "${API_KEY}" "${MASTER_IP}" \
+    > /etc/debz/pdns-secrets.env
+chmod 0600 /etc/debz/pdns-secrets.env
+
+log "API key stored at /etc/debz/pdns-secrets.env"
+
+# ── Create SQLite database ────────────────────────────────────────────────────
+
+log "Creating PowerDNS SQLite database at ${DB}"
+mkdir -p "$(dirname "${DB}")"
+chown pdns:pdns "$(dirname "${DB}")" 2>/dev/null || true
+
+# PowerDNS gsqlite3 schema (from pdns-backend-sqlite3 package)
+sqlite3 "${DB}" <<'SCHEMA'
+CREATE TABLE IF NOT EXISTS domains (
+  id                    INTEGER PRIMARY KEY,
+  name                  VARCHAR(255) NOT NULL,
+  master                VARCHAR(128) DEFAULT NULL,
+  last_check            INT DEFAULT NULL,
+  type                  VARCHAR(8) NOT NULL,
+  notified_serial       INT DEFAULT NULL,
+  account               VARCHAR(40) DEFAULT NULL,
+  options               VARCHAR(65535) DEFAULT NULL,
+  catalog               VARCHAR(255) DEFAULT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS name_index ON domains(name);
+
+CREATE TABLE IF NOT EXISTS records (
+  id                    INTEGER PRIMARY KEY,
+  domain_id             INT DEFAULT NULL,
+  name                  VARCHAR(255) DEFAULT NULL,
+  type                  VARCHAR(10) DEFAULT NULL,
+  content               VARCHAR(65535) DEFAULT NULL,
+  ttl                   INT DEFAULT NULL,
+  prio                  INT DEFAULT NULL,
+  disabled              BOOL DEFAULT 0,
+  ordername             VARCHAR(255),
+  auth                  BOOL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS records_lookup_id ON records(domain_id);
+CREATE INDEX IF NOT EXISTS records_lookup_name_type ON records(name, type);
+
+CREATE TABLE IF NOT EXISTS supermasters (
+  ip                    VARCHAR(64) NOT NULL,
+  nameserver            VARCHAR(255) NOT NULL,
+  account               VARCHAR(40) NOT NULL,
+  PRIMARY KEY(ip, nameserver)
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id                    INTEGER PRIMARY KEY,
+  domain_id             INT NOT NULL,
+  name                  VARCHAR(255) NOT NULL,
+  type                  VARCHAR(10) NOT NULL,
+  modified_at           INT NOT NULL,
+  account               VARCHAR(40) DEFAULT NULL,
+  comment               VARCHAR(65535) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS domainmetadata (
+  id                    INTEGER PRIMARY KEY,
+  domain_id             INT NOT NULL,
+  kind                  VARCHAR(32),
+  content               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cryptokeys (
+  id                    INTEGER PRIMARY KEY,
+  domain_id             INT NOT NULL,
+  flags                 INT NOT NULL,
+  active                BOOL,
+  published             BOOL DEFAULT 1,
+  content               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tsigkeys (
+  id                    INTEGER PRIMARY KEY,
+  name                  VARCHAR(255),
+  algorithm             VARCHAR(50),
+  secret                VARCHAR(255)
+);
+SCHEMA
+
+chown pdns:pdns "${DB}" 2>/dev/null || true
+chmod 0640 "${DB}"
+
+log "Database schema created"
+
+# ── Seed the cluster.debz zone ────────────────────────────────────────────────
+
+log "Creating SOA and NS records for ${ZONE}"
+
+sqlite3 "${DB}" <<SQL
+INSERT OR IGNORE INTO domains (name, type) VALUES ('${ZONE}', 'NATIVE');
+
+INSERT OR REPLACE INTO records (domain_id, name, type, content, ttl)
+  VALUES (
+    (SELECT id FROM domains WHERE name='${ZONE}'),
+    '${ZONE}',
+    'SOA',
+    'ns1.${ZONE} hostmaster.${ZONE} ${SERIAL} 3600 900 604800 60',
+    60
+  );
+
+INSERT OR REPLACE INTO records (domain_id, name, type, content, ttl)
+  VALUES (
+    (SELECT id FROM domains WHERE name='${ZONE}'),
+    '${ZONE}',
+    'NS',
+    'ns1.${ZONE}',
+    60
+  );
+
+INSERT OR REPLACE INTO records (domain_id, name, type, content, ttl)
+  VALUES (
+    (SELECT id FROM domains WHERE name='${ZONE}'),
+    'ns1.${ZONE}',
+    'A',
+    '${MASTER_IP}',
+    60
+  );
+SQL
+
+log "SOA, NS, and ns1 A record created for ${ZONE}"
+
+# ── Reverse zones for WireGuard planes ───────────────────────────────────────
+
+for reverse_zone in "77.10.in-addr.arpa" "78.10.in-addr.arpa" "79.10.in-addr.arpa" "80.10.in-addr.arpa"; do
+    log "Creating reverse zone: ${reverse_zone}"
+    sqlite3 "${DB}" <<SQL
+INSERT OR IGNORE INTO domains (name, type) VALUES ('${reverse_zone}', 'NATIVE');
+
+INSERT OR REPLACE INTO records (domain_id, name, type, content, ttl)
+  VALUES (
+    (SELECT id FROM domains WHERE name='${reverse_zone}'),
+    '${reverse_zone}',
+    'SOA',
+    'ns1.${ZONE} hostmaster.${ZONE} ${SERIAL} 3600 900 604800 60',
+    60
+  );
+
+INSERT OR REPLACE INTO records (domain_id, name, type, content, ttl)
+  VALUES (
+    (SELECT id FROM domains WHERE name='${reverse_zone}'),
+    '${reverse_zone}',
+    'NS',
+    'ns1.${ZONE}',
+    60
+  );
+SQL
+done
+
+log "Reverse zones created"
+
+# ── Enable and start pdns ─────────────────────────────────────────────────────
+
+log "Enabling and starting pdns.service"
+systemctl enable pdns.service
+systemctl restart pdns.service
+
+log "debz-pdns-setup complete — PowerDNS serving ${ZONE} on ${MASTER_IP}:5300"
+PDNSSETUP
+
+chmod +x /usr/local/sbin/debz-pdns-setup
+
+# ---------------------------------------------------------------------------
+# debz-dns-register — register node A + PTR records via PowerDNS HTTP API
+# ---------------------------------------------------------------------------
+
+log "Creating /usr/local/sbin/debz-dns-register"
+
+cat > /usr/local/sbin/debz-dns-register <<'DNSREG'
+#!/usr/bin/env bash
+set -euo pipefail
+# debz-dns-register — register this node's DNS records in cluster.debz.
+#
+# Creates or updates:
+#   <hostname>.cluster.debz          → wg0 IP  (management)
+#   <hostname>-storage.cluster.debz → wg1 IP  (storage)
+#   <hostname>-cluster.cluster.debz → wg2 IP  (east-west)
+# Plus PTR records for each of the above.
+#
+# Usage:
+#   debz-dns-register \
+#     --hostname NAME \
+#     --wg0 IP --wg1 IP --wg2 IP --wg3 IP \
+#     --pdns-url URL \
+#     --pdns-key KEY
+#
+# All flags are required except --wg3 (external plane, no DNS entry created).
+# --pdns-url defaults to http://127.0.0.1:8053 if omitted.
+# --pdns-key can also be read from /etc/debz/pdns-secrets.env.
+
+LOG=/var/log/debz/dns-register.log
+ZONE="cluster.debz"
+
+mkdir -p /var/log/debz
+exec >> "${LOG}" 2>&1
+
+log() { printf '[%(%F %T)T] [dns-register] %s\n' -1 "$*"; }
+die() { log "ERROR: $*"; exit 1; }
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+
+NODE_HOSTNAME=""
+WG0_IP="" WG1_IP="" WG2_IP="" WG3_IP=""
+PDNS_URL="http://127.0.0.1:8053"
+PDNS_KEY=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --hostname) NODE_HOSTNAME="$2"; shift 2 ;;
+        --wg0)      WG0_IP="$2";        shift 2 ;;
+        --wg1)      WG1_IP="$2";        shift 2 ;;
+        --wg2)      WG2_IP="$2";        shift 2 ;;
+        --wg3)      WG3_IP="$2";        shift 2 ;;
+        --pdns-url) PDNS_URL="$2";      shift 2 ;;
+        --pdns-key) PDNS_KEY="$2";      shift 2 ;;
+        *) die "Unknown argument: $1" ;;
+    esac
+done
+
+# Fall back to stored secrets if key not supplied on command line
+if [[ -z "${PDNS_KEY}" && -f /etc/debz/pdns-secrets.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/debz/pdns-secrets.env
+    PDNS_KEY="${PDNS_API_KEY:-}"
+fi
+
+[[ -n "${NODE_HOSTNAME}" ]] || die "--hostname is required"
+[[ -n "${WG0_IP}" ]]        || die "--wg0 is required"
+[[ -n "${WG1_IP}" ]]        || die "--wg1 is required"
+[[ -n "${WG2_IP}" ]]        || die "--wg2 is required"
+[[ -n "${PDNS_KEY}" ]]      || die "--pdns-key is required (or set PDNS_API_KEY in /etc/debz/pdns-secrets.env)"
+
+log "Registering node: ${NODE_HOSTNAME} wg0=${WG0_IP} wg1=${WG1_IP} wg2=${WG2_IP}"
+
+# ── Helper: upsert a record via PowerDNS HTTP API ────────────────────────────
+
+# pdns_upsert NAME TYPE CONTENT TTL
+pdns_upsert() {
+    local name="$1"
+    local type="$2"
+    local content="$3"
+    local ttl="${4:-60}"
+
+    # Ensure name is fully qualified (trailing dot required by PowerDNS API)
+    [[ "${name}" == *. ]] || name="${name}."
+
+    log "Upserting ${type} ${name} → ${content}"
+
+    local payload
+    payload="$(printf '{"rrsets":[{"name":"%s","type":"%s","ttl":%s,"changetype":"REPLACE","records":[{"content":"%s","disabled":false}]}]}' \
+        "${name}" "${type}" "${ttl}" "${content}")"
+
+    local http_code
+    http_code="$(curl -fsSL -o /dev/null -w "%{http_code}" \
+        -X PATCH \
+        -H "X-API-Key: ${PDNS_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" \
+        "${PDNS_URL}/api/v1/servers/localhost/zones/${ZONE}." 2>&1)" || {
+            log "WARNING: API call failed for ${type} ${name} (curl exit $?)"
+            return 1
+        }
+
+    if [[ "${http_code}" =~ ^2 ]]; then
+        log "OK [${http_code}]: ${type} ${name}"
+    else
+        log "WARNING: unexpected HTTP ${http_code} for ${type} ${name}"
+    fi
+}
+
+# ── Helper: compute PTR name from IPv4 address ───────────────────────────────
+
+# ip_to_ptr 10.77.100.1  →  1.100.77.10.in-addr.arpa
+ip_to_ptr() {
+    local ip="$1"
+    IFS='.' read -r a b c d <<< "${ip}"
+    printf '%s.%s.%s.%s.in-addr.arpa' "${d}" "${c}" "${b}" "${a}"
+}
+
+# ── Register forward A records ────────────────────────────────────────────────
+
+FQDN_BASE="${NODE_HOSTNAME}.${ZONE}"
+
+pdns_upsert "${FQDN_BASE}"           "A" "${WG0_IP}"
+pdns_upsert "${NODE_HOSTNAME}-storage.${ZONE}"  "A" "${WG1_IP}"
+pdns_upsert "${NODE_HOSTNAME}-cluster.${ZONE}"  "A" "${WG2_IP}"
+
+# ── Register PTR records ──────────────────────────────────────────────────────
+
+WG0_PTR="$(ip_to_ptr "${WG0_IP}")"
+WG1_PTR="$(ip_to_ptr "${WG1_IP}")"
+WG2_PTR="$(ip_to_ptr "${WG2_IP}")"
+
+pdns_upsert "${WG0_PTR}" "PTR" "${FQDN_BASE}."
+pdns_upsert "${WG1_PTR}" "PTR" "${NODE_HOSTNAME}-storage.${ZONE}."
+pdns_upsert "${WG2_PTR}" "PTR" "${NODE_HOSTNAME}-cluster.${ZONE}."
+
+log "debz-dns-register complete for ${NODE_HOSTNAME}"
+DNSREG
+
+chmod +x /usr/local/sbin/debz-dns-register
+
+# ---------------------------------------------------------------------------
+# Enable unbound in multi-user.target.wants (if the package is installed)
+# ---------------------------------------------------------------------------
+
+log "Enabling unbound.service (if present)"
+
+if [[ -f /usr/lib/systemd/system/unbound.service ]] || \
+   [[ -f /lib/systemd/system/unbound.service ]]; then
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    UNBOUND_UNIT=""
+    for dir in /usr/lib/systemd/system /lib/systemd/system; do
+        if [[ -f "${dir}/unbound.service" ]]; then
+            UNBOUND_UNIT="${dir}/unbound.service"
+            break
+        fi
+    done
+    ln -sf "${UNBOUND_UNIT}" \
+           /etc/systemd/system/multi-user.target.wants/unbound.service
+    log "unbound.service enabled"
+else
+    log "unbound.service unit not found at hook time — skipping symlink"
+    log "(will be enabled if package is installed before first boot)"
+fi
+
+log "DNS hook complete"

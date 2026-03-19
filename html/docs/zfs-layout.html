@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ZFS Dataset Layout — debz</title>
+  <meta name="description" content="The fixed ZFS dataset hierarchy used by every debz installation — why each decision was made and how to extend it safely."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html" class="active">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / ZFS Dataset Layout</div>
+
+    <h1>ZFS Dataset Layout</h1>
+    <p class="page-subtitle">
+      Every debz installation uses the same deterministic ZFS dataset hierarchy.
+      Automation, replication, and snapshot scripts work identically across every node.
+    </p>
+
+    <h2>Complete layout</h2>
+    <pre><code><span class="c"># Root pool — all OS and data datasets</span>
+
+<span class="k">rpool</span>                             <span class="c">canmount=off, mountpoint=none</span>
+<span class="k">rpool/ROOT</span>                        <span class="c">canmount=off, mountpoint=none</span>
+<span class="k">rpool/ROOT/&lt;hostname&gt;</span>             <span class="c">mountpoint=/  (ZFSBootMenu)</span>
+<span class="k">rpool/home</span>                        <span class="c">mountpoint=/home</span>
+<span class="k">rpool/root</span>                        <span class="c">mountpoint=/root  (root user home)</span>
+<span class="k">rpool/srv</span>                         <span class="c">mountpoint=/srv   (snapshotted every 15 min)</span>
+<span class="k">rpool/var</span>                         <span class="c">canmount=off, mountpoint=none</span>
+<span class="k">rpool/var/log</span>                     <span class="c">mountpoint=/var/log</span>
+<span class="k">rpool/var/cache</span>                   <span class="c">mountpoint=/var/cache</span>
+<span class="k">rpool/var/tmp</span>                     <span class="c">mountpoint=/var/tmp</span></code></pre>
+
+    <h2>Why rpool-only?</h2>
+    <p>
+      debz uses ZFSBootMenu as the bootloader &mdash; a standalone EFI binary that lives in the EFI
+      system partition. ZFSBootMenu can read the full rpool with all modern ZFS features enabled,
+      locate boot environments under <code>rpool/ROOT/*</code>, and hand off directly to the kernel.
+    </p>
+    <p>
+      Because ZFSBootMenu does not rely on GRUB2 to read ZFS, there is no need for a separate
+      boot pool (<code>bpool</code>) with restricted feature flags. The EFI system partition holds
+      the ZFSBootMenu binary, and rpool holds everything else.
+    </p>
+
+    <h2>Why is the hostname in the dataset path?</h2>
+    <p>
+      <code>rpool/ROOT/&lt;hostname&gt;</code>
+      follows the OpenZFS community convention for boot environments. ZFSBootMenu scans
+      <code>*/ROOT/*</code> to find bootable environments, so the container dataset must
+      be named <code>ROOT</code>.
+    </p>
+    <p>
+      The hostname in the leaf dataset name disambiguates when multiple systems share a pool
+      (uncommon but valid) and makes snapshot and replication output readable without
+      additional context.
+    </p>
+
+    <div class="callout warning">
+      <strong>Warning</strong>
+      The hostname is baked into the dataset path at install time. Renaming the host in
+      <code>/etc/hostname</code> does not rename the datasets. If you rename datasets
+      post-install you must update <code>/etc/fstab</code>, <code>/etc/zfs/zfs-list.cache/</code>,
+      and the ZFSBootMenu configuration, then regenerate the initramfs. It is easier to reinstall.
+    </div>
+
+    <h2>Dataset properties</h2>
+    <table>
+      <thead>
+        <tr><th>Dataset</th><th>Key properties</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>rpool/ROOT/&lt;hostname&gt;</td>
+          <td>mountpoint=/, compression=lz4, atime=off</td>
+          <td>Root filesystem, snapshotted by APT hooks</td>
+        </tr>
+        <tr>
+          <td>rpool/home</td>
+          <td>mountpoint=/home, compression=lz4</td>
+          <td>Excluded from root BE snapshots, survives rollbacks</td>
+        </tr>
+        <tr>
+          <td>rpool/root</td>
+          <td>mountpoint=/root, compression=lz4</td>
+          <td>root user home, separate from /home for permissions</td>
+        </tr>
+        <tr>
+          <td>rpool/srv</td>
+          <td>mountpoint=/srv, compression=lz4</td>
+          <td>Service data &mdash; 15-min snapshot timer, keep last 4</td>
+        </tr>
+        <tr>
+          <td>rpool/var</td>
+          <td>canmount=off, mountpoint=none</td>
+          <td>Container only &mdash; prevents /var from being mounted separately</td>
+        </tr>
+        <tr>
+          <td>rpool/var/log</td>
+          <td>mountpoint=/var/log, atime=off</td>
+          <td>Log persistence across root rollbacks</td>
+        </tr>
+        <tr>
+          <td>rpool/var/cache</td>
+          <td>mountpoint=/var/cache, compression=lz4</td>
+          <td>APT cache survives rollbacks, no dedup needed</td>
+        </tr>
+        <tr>
+          <td>rpool/var/tmp</td>
+          <td>mountpoint=/var/tmp, sync=disabled</td>
+          <td>Temporary files &mdash; sync off is safe for /var/tmp</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Why /home and /var/log are separate</h2>
+    <p>
+      Boot environment snapshots and rollbacks target <code>rpool/ROOT/&lt;hostname&gt;</code>
+      only. The datasets mounted at <code>/home</code>, <code>/var/log</code>,
+      <code>/var/cache</code>, and <code>/var/tmp</code> are <em>not</em> children of the ROOT
+      dataset &mdash; they are siblings. This means:
+    </p>
+    <ul>
+      <li>Rolling back the OS does not destroy user home directories</li>
+      <li>Rolling back the OS does not erase logs from before the rollback</li>
+      <li>Rolling back the OS does not lose the APT cache (faster apt-get after rollback)</li>
+    </ul>
+    <p>
+      This is the key architectural advantage of dataset separation versus a monolithic root dataset.
+    </p>
+
+    <h2>Checking the layout on a running system</h2>
+    <pre><code><span class="c"># List all datasets with mount points</span>
+<span class="k">zfs list</span> -o name,mountpoint,used,avail
+
+<span class="c"># Example output</span>
+<span class="ok">NAME                          MOUNTPOINT    USED    AVAIL</span>
+<span class="ok">rpool                         none          18.4G   41.2G</span>
+<span class="ok">rpool/ROOT                    none          8.21G   41.2G</span>
+<span class="ok">rpool/ROOT/prod-node-01       /             8.21G   41.2G</span>
+<span class="ok">rpool/home                    /home         412M    41.2G</span>
+<span class="ok">rpool/root                    /root         88K     41.2G</span>
+<span class="ok">rpool/srv                     /srv          2.18G   41.2G</span>
+<span class="ok">rpool/var                     none          1.44G   41.2G</span>
+<span class="ok">rpool/var/cache               /var/cache    892M    41.2G</span>
+<span class="ok">rpool/var/log                 /var/log      312M    41.2G</span>
+<span class="ok">rpool/var/tmp                 /var/tmp      240M    41.2G</span></code></pre>
+
+    <h2>Adding your own datasets</h2>
+    <p>You can add datasets under rpool for your own workloads. Recommended practice:</p>
+    <pre><code><span class="c"># Add a dataset for a database</span>
+<span class="k">zfs create</span> -o mountpoint=/var/lib/postgresql rpool/var/postgresql
+
+<span class="c"># Add a dataset for container volumes</span>
+<span class="k">zfs create</span> -o mountpoint=/var/lib/containers rpool/var/containers
+
+<span class="c"># Add a dataset with custom compression</span>
+<span class="k">zfs create</span> -o mountpoint=/data -o compression=zstd rpool/data</code></pre>
+
+    <p>
+      Datasets you add will persist across root boot environment rollbacks as long as they
+      are not children of <code>rpool/ROOT/&lt;hostname&gt;</code>.
+    </p>
+
+    <div class="callout info">
+      <strong>Tip</strong>
+      Place service-specific datasets under <code>rpool/srv/&lt;service&gt;</code> or
+      <code>rpool/var/&lt;service&gt;</code> to benefit from the existing snapshot policies.
+      The 15-minute <code>rpool/srv</code> snapshot is recursive &mdash; child datasets are
+      snapshotted automatically.
+    </div>
+
+    <h2>Pool topology</h2>
+    <p>The installer creates rpool with the chosen topology:</p>
+    <pre><code><span class="c"># Mirror (2 disks) &mdash; check pool status</span>
+<span class="k">zpool status</span> rpool
+
+<span class="ok">  pool: rpool</span>
+<span class="ok"> state: ONLINE</span>
+<span class="ok">config:
+        NAME        STATE     READ WRITE CKSUM
+        rpool       ONLINE       0     0     0
+          mirror-0  ONLINE       0     0     0
+            sdb     ONLINE       0     0     0
+            sdc     ONLINE       0     0     0</span>
+
+<span class="c"># Scrub the pool (run monthly)</span>
+<span class="k">zpool scrub</span> rpool
+
+<span class="c"># Check pool health for automation/monitoring</span>
+<span class="k">zpool status</span> -x    <span class="c"># prints "all pools are healthy" or details of errors</span></code></pre>
+
+    <div class="callout pro">
+      <strong>debz Pro</strong> &mdash; Custom profiles, tailored package sets, and build scripts
+      for your own workloads are available in debz Pro. <a href="../index.html#pro">Learn more</a>
+    </div>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# template-master.list.chroot
+# Packages baked into the live ISO squashfs.
+# The live session IS the master — it needs these tools available immediately
+# on boot, before anything is installed to disk.
+# ---------------------------------------------------------------------------
+
+# Salt control plane — installed via 0085-salt.hook.chroot (SaltProject repo)
+# salt-master salt-minion salt-api are NOT in Debian trixie main
+
+# WireGuard hub
+wireguard-tools
+
+# PXE / TFTP / DNS for bare-metal enrollment
+dnsmasq
+tftp-hpa
+
+# APT mirror + darksite serving
+nginx
+apt-mirror
+
+# Firewall + time
+nftables
+chrony
+
+# KVM — live session can launch VMs directly off the USB
+qemu-system-x86
+qemu-utils
+ovmf
+libvirt-daemon-system
+libvirt-clients
+virtinst
+bridge-utils
+virt-manager
+cloud-utils
+cpu-checker
+
+# Cloud CLIs (Proxmox API, AWS, GCP, Azure)
+python3-proxmoxer
+python3-requests
+
+# ZFS replication helper (optional but accelerates large sends)
+mbuffer
+
+# VDI remote desktop (for nodes installed with VDI role)
+xrdp
+
+# Diagnostics
+htop
+iperf3
+tcpdump
+ethtool
+nmap

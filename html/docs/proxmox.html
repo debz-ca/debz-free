@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Proxmox + debz — debz</title>
+  <meta name="description" content="Deploying debz VMs on Proxmox VE — ISO upload, VM configuration, Secure Boot setup, golden images, and cluster deployment."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html" class="active">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Proxmox + debz</div>
+
+    <h1>Proxmox + debz</h1>
+    <p class="page-subtitle">
+      debz runs well on Proxmox VE. This guide covers ISO upload, VM configuration,
+      Secure Boot, golden image deployments, and standing up a full cluster on Proxmox.
+    </p>
+
+    <h2>Prerequisites</h2>
+    <ul>
+      <li>Proxmox VE 8.x or later</li>
+      <li>Enough storage for the VM disk &mdash; 40 GB minimum for server, 80 GB for desktop</li>
+      <li>UEFI + Secure Boot capable VM (OVMF firmware)</li>
+    </ul>
+
+    <h2>Upload the ISO</h2>
+    <p>Upload the debz ISO to Proxmox storage via the web UI or <code>scp</code>:</p>
+    <pre><code><span class="c"># From a machine with the ISO, upload to Proxmox local storage</span>
+<span class="k">scp</span> debz-trixie-amd64-server.iso root@proxmox-host:/var/lib/vz/template/iso/
+
+<span class="c"># Verify it arrived</span>
+<span class="k">ssh</span> root@proxmox-host <span class="s">"ls -lh /var/lib/vz/template/iso/"</span></code></pre>
+
+    <p>Or use the Proxmox web UI: <strong>Datacenter &rarr; Node &rarr; local &rarr; ISO Images &rarr; Upload</strong>.</p>
+
+    <h2>Create the VM</h2>
+    <p>The critical VM settings for debz are UEFI firmware, an EFI disk, and Secure Boot initially disabled.</p>
+
+    <h3>Via Proxmox web UI</h3>
+    <ol>
+      <li><strong>General</strong>: Name the VM, select a Node and VM ID</li>
+      <li><strong>OS</strong>: Select the debz ISO; Type = Linux, Version = 6.x - 2.6 Kernel</li>
+      <li><strong>System</strong>:
+        <ul>
+          <li>Machine: <code>q35</code> (required for OVMF + PCIe)</li>
+          <li>BIOS: <code>OVMF (UEFI)</code></li>
+          <li>Add EFI Disk: checked</li>
+          <li>Pre-Enroll keys: checked (loads Microsoft CA for shim)</li>
+          <li>Secure Boot: <strong>unchecked</strong> for initial install</li>
+        </ul>
+      </li>
+      <li><strong>Disks</strong>: VirtIO SCSI, at least 40 GB for server / 80 GB for desktop</li>
+      <li><strong>CPU</strong>: at least 2 cores (4 recommended)</li>
+      <li><strong>Memory</strong>: at least 2048 MB (4096 recommended)</li>
+      <li><strong>Network</strong>: VirtIO (paravirtualised) on your chosen bridge</li>
+    </ol>
+
+    <h3>Via pvesh / qm CLI</h3>
+    <pre><code><span class="c"># Create a server VM (100 = VMID, adjust as needed)</span>
+<span class="k">qm create</span> 100 \
+  --name debz-server-01 \
+  --memory 4096 \
+  --cores 4 \
+  --cpu host \
+  --machine q35 \
+  --bios ovmf \
+  --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=1 \
+  --scsihw virtio-scsi-pci \
+  --scsi0 local-lvm:40,discard=on \
+  --ide2 local:iso/debz-trixie-amd64-server.iso,media=cdrom \
+  --boot order=ide2 \
+  --net0 virtio,bridge=vmbr0 \
+  --agent enabled=1 \
+  --ostype l26 \
+  --tpmstate0 local-lvm:4,version=v2.0</code></pre>
+
+    <div class="callout info">
+      <strong>Note</strong>
+      The <code>--tpmstate0</code> line adds a virtual TPM 2.0 device. This is optional &mdash; debz
+      does not require TPM for basic Secure Boot operation (MOK-based signing works without TPM).
+      Include it if you want TPM-backed key storage or future TPM integration.
+    </div>
+
+    <h2>VM_SECURE_BOOT and VM_TPM via deploy.sh</h2>
+    <p>
+      When using <code>deploy.sh deploy</code>, Secure Boot and TPM can be requested via environment
+      variables. Both default to off; set to <code>1</code> to include them when the VM is created:
+    </p>
+    <pre><code><span class="c"># Create a Secure Boot + TPM VM via deploy.sh</span>
+<span class="k">./deploy.sh</span> deploy \
+  PROXMOX_HOST=proxmox.debz.local \
+  VMID=101 \
+  VM_NAME=debz-secure-01 \
+  VM_SECURE_BOOT=1 \
+  VM_TPM=1 \
+  VM_DISK_GB=60</code></pre>
+
+    <p>
+      When <code>VM_SECURE_BOOT=1</code>, deploy.sh creates the EFI disk with
+      <code>pre-enrolled-keys=1</code> and sets the Secure Boot flag. The VM still boots for the
+      first time with Secure Boot disabled so the installer can run; after the installer powers off,
+      <code>qm set</code> flips the flag.
+    </p>
+
+    <h2>Running the install</h2>
+
+    <h3>Interactive (noVNC console)</h3>
+    <ol>
+      <li>Start the VM: <code>qm start 100</code></li>
+      <li>Open the noVNC console in the Proxmox web UI</li>
+      <li>The VM boots into the debz live session</li>
+      <li>Run <code>debz-installer --guided</code> in the console or SSH to the live session&rsquo;s IP</li>
+      <li>Complete the 6-step installer</li>
+    </ol>
+
+    <h3>Unattended via SSH</h3>
+    <pre><code><span class="c"># Start the VM</span>
+<span class="k">qm start</span> 100
+
+<span class="c"># Wait for the live session to boot and get an IP via DHCP</span>
+<span class="c"># Then copy the answer file and run the installer</span>
+<span class="k">scp</span> answers.env root@&lt;live-ip&gt;:/tmp/
+<span class="k">ssh</span> root@&lt;live-ip&gt; <span class="s">"debz-installer --config /tmp/answers.env"</span>
+
+<span class="c"># The system powers off after install. Enable Secure Boot, then start:</span>
+<span class="k">qm set</span> 100 --args <span class="s">"-global driver=cfi.pflash01,property=secure,value=on"</span>
+<span class="k">qm start</span> 100</code></pre>
+
+    <h2>Enabling Secure Boot after install</h2>
+    <p>
+      After the installer powers the VM off, enable Secure Boot before the next boot.
+      In Proxmox 8.x, Secure Boot state is controlled via the EFI disk settings:
+    </p>
+    <ol>
+      <li>In the Proxmox web UI, go to the VM &rarr; Hardware &rarr; EFI Disk &rarr; Edit</li>
+      <li>Check <strong>Secure Boot</strong></li>
+      <li>Start the VM</li>
+      <li>In noVNC, MokManager appears &mdash; follow the <a href="secure-boot.html">Secure Boot + MOK</a> enrollment steps</li>
+    </ol>
+    <pre><code><span class="c"># Alternative: set via CLI (check your Proxmox version's exact flag)</span>
+<span class="k">qm set</span> 100 --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=1,secure-boot=1</code></pre>
+
+    <h2>Golden images on Proxmox (deploy.sh golden)</h2>
+    <p>
+      For cluster deployments, build golden images once and stamp CoW clones for each node.
+      The <code>golden</code> command builds a fully installed qcow2 using headless QEMU on the
+      machine where <code>deploy.sh</code> runs. Once built, <code>deploy.sh spawn</code> uploads
+      the clones to Proxmox and creates VMs from them.
+    </p>
+    <pre><code><span class="c"># 1. Build KVM golden image (runs headless QEMU locally)</span>
+<span class="k">./deploy.sh</span> golden TEMPLATE=kvm GOLDEN_SIZE=60G
+
+<span class="c"># 2. Stamp 4 clones (index 2..5, hostname kvm-02 through kvm-05)</span>
+<span class="k">./deploy.sh</span> stamp TEMPLATE=kvm STAMP_COUNT=4 STAMP_BASE_HOSTNAME=kvm STAMP_BASE_INDEX=2
+
+<span class="c"># 3. Spawn as Proxmox VMs (uploads qcow2, creates VMs)</span>
+<span class="k">./deploy.sh</span> spawn TEMPLATE=kvm PROXMOX_HOST=proxmox.debz.local
+
+<span class="c"># Each spawned VM boots and auto-enrolls via wg0 to the MASTER</span></code></pre>
+
+    <p>See <a href="golden-images.html">Golden Images</a> for the full build pipeline and all environment variables.</p>
+
+    <h2>ZFS topology testing with extra disks</h2>
+    <p>
+      To test mirror or raidz1 topologies in a Proxmox VM, add extra virtual disks at VM creation
+      time. <code>deploy.sh deploy</code> supports this with <code>VM_EXTRA_DISKS</code> and
+      <code>VM_EXTRA_DISK_GB</code>:
+    </p>
+    <pre><code><span class="c"># Create a VM with 3 data disks for raidz1 testing</span>
+<span class="k">./deploy.sh</span> deploy \
+  PROXMOX_HOST=proxmox.debz.local \
+  VMID=103 \
+  VM_NAME=debz-raidz1-test \
+  VM_DISK_GB=40 \
+  VM_EXTRA_DISKS=3 \
+  VM_EXTRA_DISK_GB=40 \
+  PROXMOX_DATA_STORE=local-zfs
+
+<span class="c"># Inside the VM, use: DEBZ_ZFS_TOPOLOGY=raidz1</span>
+<span class="c"># DEBZ_ZFS_DATA_DISKS="/dev/sdb /dev/sdc /dev/sdd"</span></code></pre>
+
+    <div class="callout info">
+      <strong>PROXMOX_DATA_STORE</strong>
+      Set <code>PROXMOX_DATA_STORE</code> to your Proxmox storage pool name. Common values:
+      <code>local-lvm</code> (default), <code>local-zfs</code>, <code>ceph-pool</code>.
+      For ZFS-on-ZFS performance, set <code>sync=disabled</code> on the Proxmox host zvols after the VM is created.
+    </div>
+
+    <h2>VM disk on Proxmox ZFS storage</h2>
+    <p>
+      If your Proxmox host uses ZFS for storage, the VM disk is a zvol. debz inside the VM
+      uses its own ZFS pools (rpool + bpool) on the virtual disk &mdash; this is ZFS-on-ZFS, which
+      works fine but has some implications:
+    </p>
+    <ul>
+      <li>Disable synchronous writes on the zvol to avoid double-sync overhead:
+        <code>zfs set sync=disabled rpool/data/vm-100-disk-0</code> on the Proxmox host</li>
+      <li>Or use <code>sync=standard</code> inside the VM (default) and let Proxmox ZFS handle sync</li>
+      <li>Set the inner ZFS pool&rsquo;s <code>ashift</code> to match the outer pool (usually ashift=12)</li>
+    </ul>
+    <pre><code><span class="c"># On Proxmox host: disable sync on the zvol for VM performance</span>
+<span class="k">zfs set</span> sync=disabled rpool/data/vm-100-disk-0
+
+<span class="c"># The debz installer inside the VM sets ashift=12 by default</span></code></pre>
+
+    <h2>Snapshots and ZFS send from Proxmox</h2>
+    <p>
+      Proxmox offers built-in VM backup via its snapshot and vzdump mechanisms. For debz VMs,
+      you have two levels of backup:
+    </p>
+    <ul>
+      <li><strong>Proxmox level</strong>: vzdump creates a consistent snapshot of the entire VM disk (zvol snapshot on the host). This captures everything, regardless of the guest OS.</li>
+      <li><strong>Guest level</strong>: debz&rsquo;s own APT hooks and /srv timer run inside the VM, protecting the guest&rsquo;s datasets against bad package installs.</li>
+    </ul>
+    <p>Use Proxmox backup for disaster recovery and debz boot environments for operational rollback.</p>
+
+    <h2>Networking: multiple debz VMs</h2>
+    <p>For a cluster of debz VMs on Proxmox, a common pattern is:</p>
+    <pre><code><span class="c"># Create an isolated bridge for inter-VM traffic</span>
+<span class="c"># In Proxmox: Datacenter &rarr; Node &rarr; Network &rarr; Create &rarr; Linux Bridge</span>
+<span class="c"># Name: vmbr1, no gateway, no IP (L2 only)</span>
+
+<span class="c"># Wire up VMs: vmbr0 = uplink, vmbr1 = cluster mesh</span>
+<span class="k">qm set</span> 100 --net1 virtio,bridge=vmbr1
+<span class="k">qm set</span> 101 --net1 virtio,bridge=vmbr1
+
+<span class="c"># Inside the debz VMs, WireGuard planes are configured automatically</span>
+<span class="c"># during enrollment &mdash; WG encapsulates all cluster traffic over vmbr1</span></code></pre>
+
+    <div class="callout info">
+      <strong>Tip</strong>
+      For automated provisioning of many debz VMs from the same ISO, use <code>deploy.sh golden</code> +
+      <code>stamp</code> + <code>spawn</code>. Each clone gets unique identity injected before first boot.
+      No SSH or manual intervention needed per node &mdash; they enroll via wg0 automatically.
+      See <a href="cluster.html">Cluster Bootstrap</a> for the full enrollment flow.
+    </div>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

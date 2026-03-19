@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# 0087-salt-mine.hook.chroot
+# Configures the Salt mine on every node so that the master can
+# query live node state (role, IPs, color, index) without a round-trip
+# to each minion. mine.get queries are instant; test.ping is not required.
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [salt-mine] $*" >&2; }
+
+mkdir -p /etc/salt/minion.d
+
+cat > /etc/salt/minion.d/debz-mine.conf <<'CONF'
+# debz Salt mine — publish node identity so master/webui can query instantly
+# Mine data is refreshed on minion startup and every 60 minutes.
+mine_interval: 60
+
+mine_functions:
+  # Full node identity — role, color, index, all WireGuard IPs
+  debz_node_info:
+    mine_function: grains.items
+  # Quick ping-style availability check
+  debz_alive:
+    mine_function: test.ping
+  # WireGuard IPs per plane (queryable individually)
+  debz_wg0_ip:
+    mine_function: grains.get
+    key: wg0_ip
+  debz_wg1_ip:
+    mine_function: grains.get
+    key: wg1_ip
+  debz_wg2_ip:
+    mine_function: grains.get
+    key: wg2_ip
+  debz_wg3_ip:
+    mine_function: grains.get
+    key: wg3_ip
+  # Network addresses for Avahi discovery cross-check
+  network_addrs:
+    mine_function: network.ip_addrs
+CONF
+
+log "Salt mine config written to /etc/salt/minion.d/debz-mine.conf"

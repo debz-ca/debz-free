@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# 0070-autoinstall-seed.hook.chroot
+# Bakes debz-autoinstall.service into the live ISO squashfs.
+# On boot, the service scans for a FAT32 disk labeled DEBZ-SEED.
+# If found, it mounts it and runs debz-install-target --config answers.env
+# unattended. This is how golden qcow2 images are built headlessly.
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [autoinstall-seed] $*" >&2; }
+
+cat > /usr/local/sbin/debz-autoinstall-detect <<'DETECT'
+#!/usr/bin/env bash
+# debz-autoinstall-detect — scans for DEBZ-SEED disk and runs unattended install
+set -euo pipefail
+LOG=/var/log/debz/autoinstall.log
+mkdir -p /var/log/debz
+exec >> "${LOG}" 2>&1
+
+log() { printf '[%(%F %T)T] [autoinstall] %s\n' -1 "$*"; }
+
+# Find FAT32 disk labeled DEBZ-SEED
+SEED_DEV="$(blkid -L DEBZ-SEED 2>/dev/null || true)"
+[[ -z "${SEED_DEV}" ]] && { log "No DEBZ-SEED disk found — skipping autoinstall"; exit 0; }
+
+log "Found DEBZ-SEED at ${SEED_DEV}"
+SEED_MNT="$(mktemp -d)"
+mount -o ro "${SEED_DEV}" "${SEED_MNT}"
+
+ANSWERS="${SEED_MNT}/answers.env"
+[[ -f "${ANSWERS}" ]] || { log "No answers.env on DEBZ-SEED — skipping"; umount "${SEED_MNT}"; exit 0; }
+
+log "Copying answers.env from DEBZ-SEED"
+cp "${ANSWERS}" /tmp/debz-seed-answers.env
+
+# ── Payload staging ───────────────────────────────────────────────────────────
+
+PAYLOAD_DIR="/tmp/debz-seed-payload"
+mkdir -p "${PAYLOAD_DIR}"
+PAYLOAD_FOUND=0
+
+# postinstall.sh
+if [[ -f "${SEED_MNT}/postinstall.sh" ]]; then
+    cp "${SEED_MNT}/postinstall.sh" "${PAYLOAD_DIR}/postinstall.sh"
+    chmod +x "${PAYLOAD_DIR}/postinstall.sh"
+    log "Staged postinstall.sh → ${PAYLOAD_DIR}/postinstall.sh"
+    PAYLOAD_FOUND=1
+fi
+
+# repos/
+if [[ -d "${SEED_MNT}/repos" ]]; then
+    cp -r "${SEED_MNT}/repos" "${PAYLOAD_DIR}/repos"
+    log "Staged repos/ → ${PAYLOAD_DIR}/repos/"
+    PAYLOAD_FOUND=1
+fi
+
+# ansible/
+if [[ -d "${SEED_MNT}/ansible" ]]; then
+    cp -r "${SEED_MNT}/ansible" "${PAYLOAD_DIR}/ansible"
+    log "Staged ansible/ → ${PAYLOAD_DIR}/ansible/"
+    PAYLOAD_FOUND=1
+fi
+
+# salt/
+if [[ -d "${SEED_MNT}/salt" ]]; then
+    cp -r "${SEED_MNT}/salt" "${PAYLOAD_DIR}/salt"
+    log "Staged salt/ → ${PAYLOAD_DIR}/salt/"
+    PAYLOAD_FOUND=1
+fi
+
+# darksite/ — bind-mount if /root/darksite exists
+if [[ -d "${SEED_MNT}/darksite" ]]; then
+    if [[ -d /root/darksite ]]; then
+        mkdir -p /root/darksite/seed
+        mount --bind "${SEED_MNT}/darksite" /root/darksite/seed
+        log "Bind-mounted darksite/ → /root/darksite/seed/"
+    else
+        cp -r "${SEED_MNT}/darksite" "${PAYLOAD_DIR}/darksite"
+        log "Staged darksite/ → ${PAYLOAD_DIR}/darksite/ (no /root/darksite mount point)"
+    fi
+    PAYLOAD_FOUND=1
+fi
+
+umount "${SEED_MNT}"
+rmdir "${SEED_MNT}"
+
+# Signal file so we don't re-run on reboot
+mkdir -p /var/lib/debz
+touch /var/lib/debz/autoinstall-started
+
+# Build install command
+INSTALL_CMD=("/usr/local/sbin/debz-install-target" "--config" "/tmp/debz-seed-answers.env")
+if [[ "${PAYLOAD_FOUND}" == "1" ]]; then
+    log "Payload staged at ${PAYLOAD_DIR} — passing --seed-payload to installer"
+    INSTALL_CMD+=("--seed-payload" "${PAYLOAD_DIR}")
+else
+    log "No additional payload found on DEBZ-SEED"
+fi
+
+log "Running unattended install: ${INSTALL_CMD[*]}"
+exec "${INSTALL_CMD[@]}"
+DETECT
+chmod +x /usr/local/sbin/debz-autoinstall-detect
+
+cat > /usr/lib/systemd/system/debz-autoinstall.service <<'SVC'
+[Unit]
+Description=debz unattended autoinstall (DEBZ-SEED disk)
+After=live-config.service local-fs.target
+ConditionPathExists=!/var/lib/debz/autoinstall-started
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-autoinstall-detect
+StandardOutput=journal+console
+StandardError=journal+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+# Enable in the live system
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /usr/lib/systemd/system/debz-autoinstall.service \
+       /etc/systemd/system/multi-user.target.wants/debz-autoinstall.service
+
+log "debz-autoinstall.service baked in — will trigger on DEBZ-SEED disk at boot"

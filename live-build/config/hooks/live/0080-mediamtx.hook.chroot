@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# 0080-mediamtx.hook.chroot
+# Bake mediamtx (SRT/HLS/WebRTC/RTSP media server) into the live ISO squashfs.
+# Also installs wf-recorder for Wayland screen capture.
+# mediamtx is not in Debian repos — fetched from GitHub releases.
+set -euo pipefail
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [mediamtx] $*" >&2; }
+
+BIN="/usr/local/bin"
+CONF_DIR="/etc/mediamtx"
+SYSTEMD_DIR="/usr/lib/systemd/system"
+mkdir -p "${BIN}" "${CONF_DIR}" "${SYSTEMD_DIR}"
+
+# ── Install wf-recorder (Wayland screen capture) ─────────────────────────────
+log "Installing wf-recorder..."
+apt-get install -y --no-install-recommends wf-recorder 2>/dev/null || {
+  log "wf-recorder not in apt — will be pulled via Salt state on VDI nodes"
+}
+
+# ── Install mediamtx ──────────────────────────────────────────────────────────
+log "Fetching mediamtx latest release..."
+MTXVER="$(curl -fsSL https://api.github.com/repos/bluenviron/mediamtx/releases/latest \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")"
+
+log "mediamtx version: ${MTXVER}"
+
+curl -fsSL \
+  "https://github.com/bluenviron/mediamtx/releases/download/${MTXVER}/mediamtx_${MTXVER}_linux_amd64.tar.gz" \
+  | tar -xz -C "${BIN}" mediamtx
+chmod +x "${BIN}/mediamtx"
+
+# ── Write default mediamtx.yml ────────────────────────────────────────────────
+log "Writing /etc/mediamtx/mediamtx.yml..."
+cat > "${CONF_DIR}/mediamtx.yml" <<'CONF'
+###############################################################################
+# mediamtx — debz VDI stream server configuration
+# SRT ingest :8890  →  HLS :8888  WebRTC :8889  RTSP :8554
+###############################################################################
+
+# Logging
+logLevel: info
+logDestinations: [stdout]
+
+# API
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# Metrics (Prometheus)
+metrics: yes
+metricsAddress: 127.0.0.1:9998
+
+# RTSP (internal transport)
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+
+# RTMP disabled
+rtmp: no
+
+# HLS server — reachable on wg1 / local LAN
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsSegmentCount: 6
+hlsSegmentDuration: 2s
+hlsPartDuration: 200ms
+
+# WebRTC — browser-based preview
+webrtc: yes
+webrtcAddress: :8889
+
+# SRT ingest — carrier-grade, low-latency
+srt: yes
+srtAddress: :8890
+
+# Stream paths
+paths:
+  # Default catch-all path: any published stream is re-broadcast
+  '~^(.+)$':
+    source: publisher
+    sourceOnDemand: yes
+
+  # Named VDI session path (wf-recorder publishes here)
+  vdi:
+    source: publisher
+    record: no
+    # Optional: record to file
+    # record: yes
+    # recordPath: /var/lib/debz/recordings/%Y-%m-%dT%H:%M:%S_%path_%s.mp4
+CONF
+
+# ── Write VDI capture script ──────────────────────────────────────────────────
+log "Writing /usr/local/bin/debz-vdi-capture..."
+cat > "${BIN}/debz-vdi-capture" <<'CAPTURE'
+#!/usr/bin/env bash
+# debz-vdi-capture — capture Wayland display and stream to mediamtx via SRT
+set -euo pipefail
+
+SESSION_NAME="${DEBZ_VDI_SESSION:-vdi}"
+SRT_HOST="${DEBZ_SRT_HOST:-127.0.0.1}"
+SRT_PORT="${DEBZ_SRT_PORT:-8890}"
+VIDEO_QUALITY="${DEBZ_VDI_CRF:-28}"
+FRAMERATE="${DEBZ_VDI_FPS:-30}"
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [vdi-capture] $*"; }
+
+log "Starting VDI capture → srt://${SRT_HOST}:${SRT_PORT}/${SESSION_NAME}"
+log "  Quality: CRF=${VIDEO_QUALITY}  FPS=${FRAMERATE}"
+
+# Try NVIDIA NVENC first, fall back to libx264
+ENCODER="libx264"
+ENCODER_OPTS="-crf ${VIDEO_QUALITY} -preset ultrafast"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  ENCODER="h264_nvenc"
+  ENCODER_OPTS="-cq ${VIDEO_QUALITY} -preset p1 -tune ll"
+  log "NVIDIA GPU detected — using h264_nvenc"
+fi
+
+exec wf-recorder \
+  --muxer=mpegts \
+  --codec="${ENCODER}" \
+  --codec-param "${ENCODER_OPTS}" \
+  --framerate "${FRAMERATE}" \
+  --file "srt://${SRT_HOST}:${SRT_PORT}/${SESSION_NAME}?pkt_size=1316&mode=caller"
+CAPTURE
+chmod +x "${BIN}/debz-vdi-capture"
+
+# ── Write debz-vdi-session (headless mutter + capture) ────────────────────────
+log "Writing /usr/local/bin/debz-vdi-session..."
+cat > "${BIN}/debz-vdi-session" <<'SESSION'
+#!/usr/bin/env bash
+# debz-vdi-session — start a headless Mutter compositor session + VDI capture
+set -euo pipefail
+
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_SESSION_TYPE=wayland
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 700 "${XDG_RUNTIME_DIR}"
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [vdi-session] $*"; }
+log "Starting headless Mutter compositor..."
+
+mutter --headless --virtual-monitor 1920x1080 &
+MUTTER_PID=$!
+sleep 2
+
+log "Mutter PID: ${MUTTER_PID} — starting capture pipeline..."
+exec debz-vdi-capture "$@"
+SESSION
+chmod +x "${BIN}/debz-vdi-session"
+
+# ── Write systemd service for mediamtx ────────────────────────────────────────
+log "Writing mediamtx.service..."
+cat > "${SYSTEMD_DIR}/mediamtx.service" <<'SVC'
+[Unit]
+Description=mediamtx — SRT/HLS/WebRTC media server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mediamtx /var/log/debz
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+# Create data directory
+mkdir -p /var/lib/mediamtx
+
+log "mediamtx ${MTXVER} baked into live ISO"
+log "  Config:   /etc/mediamtx/mediamtx.yml"
+log "  Binary:   ${BIN}/mediamtx"
+log "  Service:  mediamtx.service (disabled by default — enabled on VDI nodes by Salt)"
+log "  Capture:  ${BIN}/debz-vdi-capture"
+log "  Session:  ${BIN}/debz-vdi-session"

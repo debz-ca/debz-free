@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Node Templates — debz</title>
+  <meta name="description" content="The four debz node templates: MASTER, KVM, STORAGE, and VDI — roles, services, and how to apply them."/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <link rel="stylesheet" href="../site.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="../index.html" class="logo">deb<span>z</span></a>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+    <div class="sidebar-label">HOME</div>
+    <nav class="sidebar-nav">
+      <a href="../index.html">← debz</a>
+    </nav>
+    <div class="sidebar-label">GET STARTED</div>
+    <nav class="sidebar-nav">
+      <a href="install-guide.html">Installation Guide</a>
+      <a href="templates.html" class="active">Node Templates</a>
+    </nav>
+    <div class="sidebar-label">STORAGE &amp; BOOT</div>
+    <nav class="sidebar-nav">
+      <a href="zfs-layout.html">ZFS Dataset Layout</a>
+      <a href="boot-environments.html">Boot Environments</a>
+      <a href="snapshots.html">Snapshot System</a>
+      <a href="encryption.html">ZFS Encryption</a>
+      <a href="replication.html">Replication</a>
+    </nav>
+    <div class="sidebar-label">SECURITY</div>
+    <nav class="sidebar-nav">
+      <a href="secure-boot.html">Secure Boot + MOK</a>
+      <a href="air-gap.html">Air-Gap Deployment</a>
+    </nav>
+    <div class="sidebar-label">CLUSTER</div>
+    <nav class="sidebar-nav">
+      <a href="wireguard.html">WireGuard Planes</a>
+      <a href="golden-images.html">Golden Images</a>
+      <a href="cluster.html">Cluster Bootstrap</a>
+      <a href="web-ui.html">Web UI</a>
+    </nav>
+    <div class="sidebar-label">DEPLOY</div>
+    <nav class="sidebar-nav">
+      <a href="proxmox.html">Proxmox + debz</a>
+      <a href="deploy-reference.html">deploy.sh Reference</a>
+      <a href="extending.html">Extending debz</a>
+    </nav>
+    <div class="sidebar-label">REFERENCE</div>
+    <nav class="sidebar-nav">
+      <a href="faq.html">FAQ</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="breadcrumb"><a href="../index.html">debz</a> / <a href="../index.html#wiki">docs</a> / Node Templates</div>
+
+    <h1>Node Templates</h1>
+    <p class="page-subtitle">
+      debz defines four node roles. Each installed machine runs exactly one template.
+      Templates are selected at install time via the guided wizard, answer file, or
+      DEBZ-SEED disk &mdash; and applied via Salt highstate after enrollment.
+    </p>
+
+    <h2>Template overview</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Template</th>
+          <th>Role</th>
+          <th>Key Services</th>
+          <th>WG Planes Used</th>
+          <th>GPU Support</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge col-debz">master</span></td>
+          <td>Control plane hub</td>
+          <td>Salt master, WireGuard hub, dnsmasq, nftables, KVM</td>
+          <td>wg0&ndash;wg3 (hub on all)</td>
+          <td class="no">No</td>
+        </tr>
+        <tr>
+          <td><span class="badge">kvm</span></td>
+          <td>Hypervisor</td>
+          <td>QEMU/KVM, libvirt, OVMF, bridge networking</td>
+          <td>wg1, wg2, wg3</td>
+          <td class="partial">Optional (PCIe passthrough)</td>
+        </tr>
+        <tr>
+          <td><span class="badge">storage</span></td>
+          <td>ZFS NAS/SAN</td>
+          <td>NFS, iSCSI (tgt), Samba, prometheus-node-exporter</td>
+          <td>wg1, wg3</td>
+          <td class="no">No</td>
+        </tr>
+        <tr>
+          <td><span class="badge">vdi</span></td>
+          <td>Streaming desktop</td>
+          <td>mediamtx, wf-recorder, FFmpeg, GNOME, optional NVIDIA</td>
+          <td>wg1, wg2</td>
+          <td class="yes">Yes (NVIDIA nvenc)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Selecting a template</h2>
+    <p>
+      In the guided TUI installer, template selection is the first step. In an answer file,
+      set <code>DEBZ_PROFILE</code>:
+    </p>
+    <pre><code><span class="k">DEBZ_PROFILE</span>=<span class="s">master</span>   <span class="c"># master | kvm | storage | vdi</span></code></pre>
+    <p>
+      On a DEBZ-SEED disk, include <code>DEBZ_PROFILE</code> in <code>answers.env</code> alongside
+      disk, identity, and network settings. The <code>debz-autoinstall</code> service detects the
+      FAT32 labeled disk on live boot and runs the installer non-interactively.
+    </p>
+
+    <div class="callout info">
+      <strong>Note</strong>
+      Template selection determines which Salt state tree runs at highstate. You can re-apply or
+      change a node&rsquo;s role after install with <code>debz-apply-role --role &lt;template&gt;</code>,
+      but this is not the normal path &mdash; golden images are pre-baked per template.
+    </div>
+
+    <div class="section-label">Template Details</div>
+
+    <h2>MASTER</h2>
+    <p>
+      The MASTER is the cluster control plane. A single MASTER node on a USB drive gives you
+      an instant, portable control plane &mdash; plug in, boot, and the hub is live. No storage
+      required for basic hub operation; the live session is fully functional as a MASTER.
+    </p>
+
+    <h3>What runs at boot</h3>
+    <ul>
+      <li><strong>WireGuard:</strong> wg0&ndash;wg3 all up, hub IPs .1 on each plane</li>
+      <li><strong>Salt master:</strong> bound to <code>10.78.0.1</code> (wg1), accepts minions after key approval</li>
+      <li><strong>dnsmasq:</strong> DNS and DHCP for the cluster, serves <code>debz.local</code> domain</li>
+      <li><strong>nftables:</strong> stateful firewall, NAT for nodes without public IPs, WG traffic rules</li>
+      <li><strong>KVM/libvirt:</strong> available for running VMs directly on the master if needed</li>
+      <li><strong>debz-autobootstrap:</strong> 30-second loop on wg0, issues hub.env to enrolling nodes</li>
+      <li><strong>debz-webui:</strong> management UI at <code>http://10.78.0.1:8080</code></li>
+    </ul>
+
+    <h3>SSH access</h3>
+    <pre><code><span class="c"># From any node enrolled on wg1</span>
+<span class="k">ssh</span> admin@10.78.0.1
+
+<span class="c"># From outside the cluster (public IP, if configured)</span>
+<span class="k">ssh</span> admin@&lt;master-public-ip&gt;</code></pre>
+
+    <h3>Applying the master role</h3>
+    <pre><code><span class="k">debz-apply-role</span> --role master</code></pre>
+
+    <h2>KVM</h2>
+    <p>
+      KVM nodes run QEMU/KVM hypervisors with libvirt management. They host the golden-image-based
+      clones spawned by <code>deploy.sh spawn</code> and can also run arbitrary VMs.
+    </p>
+
+    <h3>Key packages</h3>
+    <p><code>qemu-system-x86</code>, <code>libvirt-daemon-system</code>, <code>virtinst</code>,
+    <code>ovmf</code>, <code>bridge-utils</code>, <code>virt-manager</code> (on desktop profile)</p>
+
+    <h3>Bridge networking</h3>
+    <pre><code><span class="c"># KVM node: check bridge status</span>
+<span class="k">ip link show</span> type bridge
+<span class="k">virsh</span> net-list --all
+
+<span class="c"># Spawn a golden-image clone on this KVM node</span>
+<span class="k">./deploy.sh</span> spawn TEMPLATE=kvm PROXMOX_HOST=kvm-01.debz.local
+
+<span class="c"># Or spawn via libvirt directly</span>
+<span class="k">virt-install</span> --import --name kvm-clone-01 \
+  --disk /var/lib/debz/clones/kvm-clone-01.qcow2 \
+  --memory 4096 --vcpus 4 --os-variant debian12</code></pre>
+
+    <h2>STORAGE</h2>
+    <p>
+      STORAGE nodes run ZFS as NAS and SAN, exporting data to the cluster over the storage plane
+      (wg3, 10.80.0.0/16). They do not run Kubernetes workloads and have no desktop environment.
+    </p>
+
+    <h3>Exporting NFS over wg3</h3>
+    <pre><code><span class="c"># Enable NFS exports on a ZFS dataset over the storage plane</span>
+<span class="k">zfs set</span> sharenfs="rw=@10.80.0.0/16,no_root_squash" rpool/srv/data
+
+<span class="c"># Verify the export</span>
+<span class="k">showmount</span> -e localhost
+
+<span class="c"># From a KVM or VDI node, mount it</span>
+<span class="k">mount</span> -t nfs 10.80.0.3:/srv/data /mnt/data</code></pre>
+
+    <h3>iSCSI via tgt</h3>
+    <pre><code><span class="c"># Create a ZFS zvol for iSCSI backing</span>
+<span class="k">zfs create</span> -V 100G -s rpool/iscsi/vol0
+
+<span class="c"># Configure tgt target (edit /etc/tgt/conf.d/debz.conf)</span>
+<span class="c"># Restart and verify</span>
+<span class="k">systemctl restart</span> tgt
+<span class="k">tgtadm</span> --mode target --op show</code></pre>
+
+    <h3>prometheus-node-exporter</h3>
+    <p>Bound to the wg3 interface. Scrape target for Prometheus running on the MASTER:</p>
+    <pre><code><span class="c"># /etc/default/prometheus-node-exporter on STORAGE node</span>
+ARGS="--web.listen-address=10.80.0.3:9100"</code></pre>
+
+    <h2>VDI</h2>
+    <p>
+      VDI nodes stream a live desktop session over the network using mediamtx as the
+      media server. Clients connect via browser (HLS/WebRTC) or any SRT-capable player.
+      NVIDIA GPUs are auto-detected and nvenc is used if available.
+    </p>
+
+    <h3>mediamtx ports</h3>
+    <table>
+      <thead>
+        <tr><th>Port</th><th>Protocol</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>8888</td><td>HTTP</td><td>HLS stream (browser-compatible)</td></tr>
+        <tr><td>8889</td><td>HTTP</td><td>WebRTC stream</td></tr>
+        <tr><td>8890</td><td>UDP/TCP</td><td>SRT stream (low-latency)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Starting a VDI session</h3>
+    <pre><code><span class="c"># Start a desktop capture session</span>
+<span class="k">debz-vdi-session</span> start
+
+<span class="c"># With NVIDIA encoding (auto-detected if GPU present)</span>
+<span class="k">debz-vdi-capture</span> --encoder nvenc --output srt://10.78.0.5:8890
+
+<span class="c"># Connect from a browser on wg1</span>
+<span class="c"># http://10.78.0.5:8888/stream.m3u8  &larr; HLS</span>
+<span class="c"># http://10.78.0.5:8889/stream       &larr; WebRTC</span>
+
+<span class="c"># Or use VLC / ffplay with SRT</span>
+<span class="k">ffplay</span> "srt://10.78.0.5:8890?mode=caller"</code></pre>
+
+    <div class="callout info">
+      <strong>NVIDIA detection</strong>
+      At role-apply time, <code>debz-apply-role</code> checks for NVIDIA hardware. If found,
+      it installs the <code>nvidia-driver</code> package from trixie and configures <code>wf-recorder</code>
+      to use <code>nvenc</code>. Set <code>DEBZ_ENABLE_NVIDIA=1</code> in the answer file to force
+      NVIDIA setup even before role application.
+    </div>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-logo">deb<span>z</span>.ca</div>
+  <nav class="footer-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#templates">Templates</a>
+    <a href="../index.html#compare">Compare</a>
+    <a href="../index.html#wiki">Docs</a>
+    <a href="../index.html#download">Download</a>
+  </nav>
+  <p>Debian 13 &middot; ZFS &middot; ZFSBootMenu &middot; WireGuard &middot; Salt &middot; Kubernetes &middot; AMD64 + ARM64</p>
+</footer>
+
+
+</body>
+</html>

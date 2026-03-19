@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# 0096-poof.hook.chroot
+# Bakes debz-poof.service and the live session banner into the squashfs.
+# On shutdown/reboot in live mode, debz-poof fires to scrub ephemeral secrets.
+set -euo pipefail
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [0096-poof] $*" >&2; }
+
+# ── Sanity: debz-poof must exist and be executable ────────────────────────────
+
+if [[ ! -x /usr/local/sbin/debz-poof ]]; then
+    echo "ERROR: /usr/local/sbin/debz-poof not found or not executable" >&2
+    exit 1
+fi
+log "debz-poof is present and executable"
+
+# ── debz-poof.service ─────────────────────────────────────────────────────────
+
+mkdir -p /usr/lib/systemd/system
+
+cat > /usr/lib/systemd/system/debz-poof.service <<'SVC'
+[Unit]
+Description=debz live session scrub (poof)
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-poof
+StandardOutput=journal
+RemainAfterExit=yes
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target
+SVC
+
+log "Created debz-poof.service"
+
+# ── Enable the service (symlinks into the appropriate .wants dirs) ─────────────
+
+for target in halt.target reboot.target shutdown.target; do
+    wants_dir="/etc/systemd/system/${target}.wants"
+    mkdir -p "${wants_dir}"
+    ln -sf /usr/lib/systemd/system/debz-poof.service \
+           "${wants_dir}/debz-poof.service"
+    log "Enabled debz-poof.service for ${target}"
+done
+
+# ── Live session login banner ──────────────────────────────────────────────────
+
+cat > /etc/profile.d/debz-live-banner.sh <<'BANNER'
+#!/bin/bash
+if [[ ! -f /etc/debz/install-manifest.env ]] || ! grep -q 'DEBZ_INSTALLED=1' /etc/debz/install-manifest.env 2>/dev/null; then
+  echo ""
+  echo "  ╔══════════════════════════════════════════╗"
+  echo "  ║  debz LIVE SESSION — ephemeral mode       ║"
+  echo "  ║  All keys and credentials exist in RAM    ║"
+  echo "  ║  Run: debz-poof  to scrub and clear       ║"
+  echo "  ╚══════════════════════════════════════════╝"
+  echo ""
+fi
+BANNER
+
+chmod +x /etc/profile.d/debz-live-banner.sh
+log "Created /etc/profile.d/debz-live-banner.sh"
+
+log "0096-poof.hook.chroot complete"

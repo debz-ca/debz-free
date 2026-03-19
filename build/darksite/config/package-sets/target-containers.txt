@@ -1,0 +1,41 @@
+# Container runtime packages — Docker, Podman, LXD, containerd
+# Included in darksite for all ISOs so container tools are available offline
+
+# containerd (used by Kubernetes and Firecracker)
+containerd
+
+# Podman (daemonless OCI containers)
+podman
+podman-compose
+buildah
+skopeo
+slirp4netns
+fuse-overlayfs
+crun
+
+# LXD/LXC (system containers)
+lxd
+lxc
+lxcfs
+
+# Docker Engine (from Docker APT repo — added by build-darksite.sh)
+docker-ce
+docker-ce-cli
+docker-ce-rootless-extras
+docker-buildx-plugin
+docker-compose-plugin
+containerd.io
+
+# Kubernetes (from k8s APT repo — added by build-darksite.sh)
+kubectl
+kubeadm
+kubelet
+kubernetes-cni
+
+apt-transport-https
+ca-certificates
+
+# Common container networking
+bridge-utils
+iptables
+nftables

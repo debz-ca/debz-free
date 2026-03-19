@@ -1,0 +1,29 @@
+# Master template packages — Salt master hub + WireGuard planes + nginx enrollment.
+# These are downloaded into the darksite APT pool during ISO build so the
+# master template installs 100% offline from disk.
+
+# Salt control plane (from SaltProject repo — added to builder in 0085-salt.hook.chroot)
+salt-master
+salt-minion
+salt-api
+salt-common
+
+# Enrollment / PXE / DNS
+nginx
+dnsmasq
+tftp-hpa
+
+# Python helpers (Salt deps + register-minion)
+python3-psutil
+python3-venv
+python3-pip
+
+# Ops / debug
+jq
+xxd
+unzip
+rsync
+net-tools
+socat
+mtr-tiny
+iperf3

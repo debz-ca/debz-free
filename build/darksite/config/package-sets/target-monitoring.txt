@@ -1,0 +1,9 @@
+# Monitoring profile packages — Prometheus + Grafana + Alertmanager
+prometheus
+prometheus-node-exporter
+prometheus-alertmanager
+# grafana is pulled from grafana APT repo (added by build-darksite.sh)
+grafana
+nftables
+chrony
+wireguard-tools

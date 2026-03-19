@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# 0075-cloud-tools.hook.chroot
+# Install cloud CLIs, kubectl, helm, and Firecracker into the live squashfs.
+# All binaries are fetched at ISO build time — no internet needed at runtime.
+set -euo pipefail
+
+log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] [cloud-tools] $*" >&2; }
+
+ARCH="amd64"
+BIN="/usr/local/bin"
+MAN="/usr/local/share/man/man1"
+mkdir -p "${BIN}" "${MAN}"
+
+# ── kubectl ───────────────────────────────────────────────────────────────────
+log "Installing kubectl (latest stable)..."
+K8S_VER="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+curl -fsSL "https://dl.k8s.io/release/${K8S_VER}/bin/linux/${ARCH}/kubectl" \
+  -o "${BIN}/kubectl"
+chmod +x "${BIN}/kubectl"
+log "kubectl ${K8S_VER} installed"
+
+# ── helm ─────────────────────────────────────────────────────────────────────
+log "Installing helm (latest stable)..."
+HELM_VER="$(curl -fsSL https://api.github.com/repos/helm/helm/releases/latest \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")"
+curl -fsSL "https://get.helm.sh/helm-${HELM_VER}-linux-${ARCH}.tar.gz" \
+  | tar -xz --strip-components=1 -C "${BIN}" "linux-${ARCH}/helm"
+chmod +x "${BIN}/helm"
+log "helm ${HELM_VER} installed"
+
+# ── AWS CLI v2 ────────────────────────────────────────────────────────────────
+log "Installing AWS CLI v2 (latest)..."
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+  -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp/awscliv2
+/tmp/awscliv2/aws/install --bin-dir "${BIN}" --install-dir /usr/local/aws-cli --update
+rm -rf /tmp/awscliv2 /tmp/awscliv2.zip
+log "AWS CLI v2 installed"
+
+# ── Google Cloud SDK (gcloud) ─────────────────────────────────────────────────
+log "Installing Google Cloud SDK (latest)..."
+GCLOUD_VER="$(curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/components-2.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['version'])" 2>/dev/null || echo "latest")"
+curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz" \
+  | tar -xz -C /usr/local/
+ln -sf /usr/local/google-cloud-sdk/bin/gcloud "${BIN}/gcloud"
+ln -sf /usr/local/google-cloud-sdk/bin/gsutil "${BIN}/gsutil"
+ln -sf /usr/local/google-cloud-sdk/bin/bq     "${BIN}/bq"
+# Install kubectl gke plugin
+/usr/local/google-cloud-sdk/bin/gcloud components install gke-gcloud-auth-plugin \
+  --quiet 2>/dev/null || true
+log "gcloud installed (${GCLOUD_VER})"
+
+# ── Azure CLI ─────────────────────────────────────────────────────────────────
+log "Installing Azure CLI (via pip — avoids apt repo requirement)..."
+pip3 install --quiet azure-cli 2>/dev/null || {
+  log "pip3 azure-cli failed — trying pipx..."
+  pipx install azure-cli 2>/dev/null || log "WARNING: Azure CLI install failed — skip"
+}
+if command -v az >/dev/null 2>&1; then
+  log "Azure CLI installed: $(az --version 2>&1 | head -1)"
+fi
+
+# ── Firecracker ───────────────────────────────────────────────────────────────
+log "Installing Firecracker (latest stable)..."
+FC_VER="$(curl -fsSL https://api.github.com/repos/firecracker-microvm/firecracker/releases/latest \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")"
+curl -fsSL \
+  "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VER}/firecracker-${FC_VER}-x86_64.tgz" \
+  | tar -xz -C /tmp/
+mv "/tmp/release-${FC_VER}-x86_64/firecracker-${FC_VER}-x86_64" "${BIN}/firecracker"
+mv "/tmp/release-${FC_VER}-x86_64/jailer-${FC_VER}-x86_64"      "${BIN}/jailer" 2>/dev/null || true
+chmod +x "${BIN}/firecracker" "${BIN}/jailer" 2>/dev/null || true
+rm -rf "/tmp/release-${FC_VER}-x86_64"
+log "Firecracker ${FC_VER} installed"
+
+# ── Hubble CLI ────────────────────────────────────────────────────────────────
+log "Installing Hubble CLI (latest stable)..."
+HUBBLE_VER="$(curl -fsSL https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)"
+curl -fsSL \
+  "https://github.com/cilium/hubble/releases/download/${HUBBLE_VER}/hubble-linux-${ARCH}.tar.gz" \
+  | tar -xz -C "${BIN}" hubble
+chmod +x "${BIN}/hubble"
+log "Hubble CLI ${HUBBLE_VER} installed"
+
+# ── Verify binaries ───────────────────────────────────────────────────────────
+log "Verifying installed binaries..."
+for bin in kubectl helm aws gcloud firecracker hubble; do
+  if command -v "${bin}" >/dev/null 2>&1; then
+    log "  OK: ${bin}"
+  else
+    log "  WARNING: ${bin} not found in PATH"
+  fi
+done
+
+log "Cloud tools hook complete"

@@ -1,0 +1,9 @@
+# GNOME desktop profile packages
+task-gnome-desktop
+gdm3
+gnome-terminal
+gnome-text-editor
+nautilus
+firefox-esr
+fonts-liberation
+fonts-noto-core
