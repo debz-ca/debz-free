@@ -72,7 +72,7 @@ debz isn't just an installer — every system gets a set of quality-of-life impr
 
 ### Automatic snapshots
 
-**Before and after every package change** — a snapshot is taken automatically before and after every `apt install`, `apt upgrade`, or `apt remove`. Bad update? Roll back in seconds.
+**Before and after every package change** — a snapshot is taken automatically before and after every `apt install`, `apt upgrade`, or `apt remove`. The last 10 are kept automatically. Bad update? Roll back in seconds.
 
 ```bash
 # See all snapshots
