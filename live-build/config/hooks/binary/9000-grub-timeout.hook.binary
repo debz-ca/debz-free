@@ -1,0 +1,16 @@
+#!/bin/sh
+# Set GRUB boot menu timeout to 5 seconds so the live ISO auto-boots
+# without waiting for a keypress. lb config has no --grub-timeout option.
+set -e
+
+for cfg in \
+    binary/boot/grub/grub.cfg \
+    binary/EFI/boot/grub.cfg \
+    binary/boot/grub/x86_64-efi/grub.cfg; do
+  [ -f "$cfg" ] || continue
+  sed -i 's/^set timeout=.*/set timeout=5/' "$cfg"
+  # If no timeout line exists, add one after set default
+  grep -q 'set timeout=' "$cfg" || \
+    sed -i '/^set default=/a set timeout=5' "$cfg"
+  echo "[grub-timeout] patched: $cfg"
+done
