@@ -20,7 +20,21 @@ set wildmode=longest,list,full
 set splitbelow
 set splitright
 set clipboard=unnamedplus
+set noshowmode
 
+" ── debz colorscheme ─────────────────────────────────────────────────────────
+if has('termguicolors')
+  set termguicolors
+endif
+colorscheme debz
+
+" ── Statusline — matches debz tmux bar ───────────────────────────────────────
+set statusline=
+set statusline+=%#StatusLineTerm#\ %{toupper(mode())}\
+set statusline+=%#StatusLine#\ %f%m%r\
+set statusline+=%=%#StatusLineNC#\ %y\ %l:%c\ %p%%\
+
+" ── Cursor shape ─────────────────────────────────────────────────────────────
 if &term =~ 'xterm'
   let &t_SI = "\e[6 q"
   let &t_EI = "\e[2 q"

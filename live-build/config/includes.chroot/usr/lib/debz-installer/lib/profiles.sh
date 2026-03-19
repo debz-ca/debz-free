@@ -230,6 +230,19 @@ EOGDM
     [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/etc/skel/${_f}"
     [[ -f "/etc/skel/${_f}" ]] && cp "/etc/skel/${_f}" "${target}/root/${_f}"
   done
+  # vim colorscheme
+  if [[ -d /etc/skel/.vim ]]; then
+    cp -r /etc/skel/.vim "${target}/etc/skel/.vim"
+    cp -r /etc/skel/.vim "${target}/root/.vim"
+  fi
+
+  # ── Performance tuning (sysctl, ZFS ARC, I/O scheduler) ─────────────────────
+  [[ -f /etc/sysctl.d/99-debz.conf ]] && \
+    { mkdir -p "${target}/etc/sysctl.d"; cp /etc/sysctl.d/99-debz.conf "${target}/etc/sysctl.d/99-debz.conf"; }
+  [[ -f /etc/modprobe.d/zfs.conf ]] && \
+    { mkdir -p "${target}/etc/modprobe.d"; cp /etc/modprobe.d/zfs.conf "${target}/etc/modprobe.d/zfs.conf"; }
+  [[ -f /etc/udev/rules.d/60-debz-scheduler.rules ]] && \
+    { mkdir -p "${target}/etc/udev/rules.d"; cp /etc/udev/rules.d/60-debz-scheduler.rules "${target}/etc/udev/rules.d/60-debz-scheduler.rules"; }
 
   # ── Backend runtime tools (debz-be, debz-recovery, debz-upgrade) ───────────
   if [[ -d /usr/lib/debz-installer/backend ]]; then
