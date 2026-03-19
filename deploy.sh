@@ -2133,41 +2133,58 @@ cmd_latest_iso() {
 }
 
 # ---------------------------------------------------------------------------
-# Subcommand: r2-upload
-# Upload latest ISO to Cloudflare R2.
-# Reads credentials from .r2-credentials (gitignored, never committed).
+# Subcommand: r2-upload / publish
+# Upload latest ISO + sha256 to Cloudflare R2 (debz-releases bucket).
+# Uses aws CLI credentials configured via: aws configure
+# Usage: ./deploy.sh publish [VERSION]
+#   VERSION defaults to R2_VERSION env var or v1.0.0
 # ---------------------------------------------------------------------------
 
-cmd_r2_upload() {
-    local creds="$ROOT/.r2-credentials"
-    [[ -f "$creds" ]] || die "R2 credentials not found at $creds"
-    # shellcheck disable=SC1090
-    source "$creds"
+R2_ENDPOINT="https://98b263f2fc04b02728204fbe0242af52.r2.cloudflarestorage.com"
+R2_BUCKET="debz-releases"
+R2_PUBLIC_URL="https://pub-77bf4c61c18344b4b96dbb96ad972389.r2.dev"
 
+cmd_r2_upload() { cmd_publish "$@"; }
+
+cmd_publish() {
     command -v aws >/dev/null 2>&1 || die "aws CLI not found — install awscli"
 
-    local iso version dest
+    local iso version edition dest dest_sha url
     iso="$(latest_iso)"
     [[ -n "$iso" ]] || die "No ISO found — run: ./deploy.sh build first"
 
-    # Version tag: use R2_VERSION env var or default to date-stamped beta
-    version="${R2_VERSION:-v0.95-beta}"
+    version="${1:-${R2_VERSION:-v1.0.0}}"
     edition="${EDITION:-free}"
     dest="debz-${edition}-${version}-amd64.iso"
+    dest_sha="${dest}.sha256"
+    url="${R2_PUBLIC_URL}/${dest}"
 
-    log "Uploading ISO to R2..."
-    log "  Source:  $iso  ($(du -sh "$iso" | cut -f1))"
-    log "  Bucket:  ${R2_BUCKET}/${dest}"
-    log "  URL:     https://pub-77bf4c61c18344b4b96dbb96ad972389.r2.dev/${dest}"
+    log "Publishing debz-${edition} ${version}"
+    log "  ISO:     $iso  ($(du -sh "$iso" | cut -f1))"
+    log "  Object:  s3://${R2_BUCKET}/${dest}"
+    log "  URL:     ${url}"
 
-    AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
-    AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+    # Generate sha256 alongside the ISO
+    local sha_file="${iso}.sha256"
+    (cd "$(dirname "$iso")" && sha256sum "$(basename "$iso")" > "$(basename "$sha_file")")
+    log "  SHA256:  $(cat "$sha_file")"
+
+    # Upload ISO
     aws s3 cp "$iso" "s3://${R2_BUCKET}/${dest}" \
         --endpoint-url "$R2_ENDPOINT" \
         --no-progress \
-        || die "Upload failed"
+        || die "ISO upload failed"
 
-    log "Upload complete: https://pub-77bf4c61c18344b4b96dbb96ad972389.r2.dev/${dest}"
+    # Upload sha256
+    aws s3 cp "$sha_file" "s3://${R2_BUCKET}/${dest_sha}" \
+        --endpoint-url "$R2_ENDPOINT" \
+        --no-progress \
+        || die "sha256 upload failed"
+
+    log ""
+    log "✔ Published!"
+    log "  Download: ${url}"
+    log "  Checksum: ${R2_PUBLIC_URL}/${dest_sha}"
 }
 
 # ---------------------------------------------------------------------------
@@ -3585,7 +3602,7 @@ case "$SUBCOMMAND" in
     site-deploy)         cmd_site_deploy ;;
     site-deploy-release) cmd_site_deploy_release ;;
     ia-upload)           cmd_ia_upload ;;
-    r2-upload)           cmd_r2_upload ;;
+    r2-upload|publish)   cmd_publish "$@" ;;
     scc)              cmd_scc ;;
     k8s-ha)           cmd_k8s_ha ;;
     latest-iso)       cmd_latest_iso ;;
