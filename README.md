@@ -40,41 +40,6 @@ The installer is also reachable over the network at `https://<ip>:8080` from any
 
 ---
 
-## Building
-
-**Requirements:** `docker` and `git`. Everything else runs inside the container.
-
-```bash
-git clone https://github.com/debz-ca/debz-free.git
-cd debz-free
-
-# Build the builder container (~5 min, first time only)
-./deploy.sh builder-image
-
-# Build the ISO (~20-40 min)
-./deploy.sh build
-
-# Find the ISO
-./deploy.sh latest-iso
-
-# Burn to USB
-USB_DEVICE=/dev/sdb ./deploy.sh burn
-```
-
-Works on any Linux host with Docker. Tested on Debian, Ubuntu, Fedora.
-
-### Build commands
-
-```bash
-./deploy.sh builder-image   # Build the Docker builder container (do this first)
-./deploy.sh build           # Build the ISO
-./deploy.sh latest-iso      # Print path to the newest ISO
-./deploy.sh burn            # Write ISO to USB  (USB_DEVICE=/dev/sdX)
-./deploy.sh clean           # Remove build artifacts
-```
-
----
-
 ## ZFS pool layout
 
 ```
@@ -272,18 +237,6 @@ zfs clone rpool/srv/myapp@v1 rpool/srv/myapp-test
 
 # Factory reset — roll back to the post-install snapshot
 zfs rollback -r rpool@install-<timestamp>
-```
-
----
-
-## Architecture
-
-```
-deploy.sh
-  └── builder/container-build.sh   (privileged Docker container)
-        └── builder/build-iso.sh   (lb config + lb build)
-              └── live-build/config/
-                    └── live-build/output/  (ISO — gitignored)
 ```
 
 ---
