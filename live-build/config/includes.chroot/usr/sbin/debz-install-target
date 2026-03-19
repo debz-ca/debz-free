@@ -26,6 +26,14 @@ k_poweroff_after_success() {
   for _dev in /dev/sr0 /dev/sr1 /dev/cdrom /dev/dvd; do
     [[ -b "$_dev" ]] && eject "$_dev" 2>/dev/null || true
   done
+  # Kill the live GNOME session so systemd doesn't hang waiting for it on shutdown
+  loginctl terminate-session 1 2>/dev/null || true
+  loginctl terminate-user live  2>/dev/null || true
+  # Cap shutdown wait so a stray process can't block poweroff indefinitely
+  mkdir -p /run/systemd/system.conf.d
+  printf '[Manager]\nDefaultTimeoutStopSec=10s\n' \
+    > /run/systemd/system.conf.d/debz-fast-shutdown.conf
+  systemctl daemon-reexec 2>/dev/null || true
 
   echo
   printf '\e[1;32m╔══════════════════════════════════════════════════════════╗\e[0m\n'
