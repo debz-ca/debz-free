@@ -738,6 +738,14 @@ SALT
     systemctl enable debz-webui 2>/dev/null || true
     systemctl start  debz-webui 2>/dev/null || true
 
+    # Remove darksite APT mirror (~1.8G) — not needed after install
+    if [[ -d /root/darksite ]]; then
+      log "Removing darksite directory (~1.8G)..."
+      rm -rf /root/darksite
+      systemctl disable --now debz-apt-mirror.service 2>/dev/null || true
+      log "Darksite removed."
+    fi
+
     log "debz-firstboot complete (free edition)"
     return 0
   fi
