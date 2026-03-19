@@ -1,0 +1,37 @@
+---
+# debz cluster — shared variables (all groups)
+# Inventory is auto-generated from state.db by debz-reconcile.
+# Node-specific values (IPs, pubkeys) come from host_vars auto-generated entries.
+
+# WireGuard planes
+wg1_cidr: "10.78.0.0/16"   # management — Salt/SSH/Ansible
+wg2_cidr: "10.79.0.0/16"   # metrics — Prometheus/Grafana
+wg3_cidr: "10.80.0.0/16"   # data — Kubernetes overlay / storage
+
+# Kubernetes
+k8s_version:      "1.35"
+k8s_semver:       "1.35.0"
+k8s_deb_version:  "1.35.0-1.1"
+k8s_pod_cidr:     "10.244.0.0/16"
+k8s_svc_cidr:     "10.96.0.0/12"
+k8s_cluster_dns:  "10.96.0.10"
+
+# CNI — Cilium
+cilium_version:   "1.16.5"
+cilium_chart:     "1.16.5"
+
+# etcd
+etcd_version:     "3.5.15"
+etcd_data_dir:    "/var/lib/etcd"
+etcd_client_port: 2379
+etcd_peer_port:   2380
+
+# Helm
+helm_version:     "v3.16.4"
+
+# Debian
+debian_codename:  "trixie"
+
+# Ansible connection — all nodes accept CM's ansible user
+ansible_user:                  ansible
+ansible_python_interpreter:    /usr/bin/python3

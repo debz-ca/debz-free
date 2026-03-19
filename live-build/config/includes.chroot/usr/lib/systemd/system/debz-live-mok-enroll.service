@@ -1,0 +1,18 @@
+[Unit]
+Description=debz Secure Boot MOK enrollment (live session)
+Documentation=https://debz.ca
+DefaultDependencies=no
+After=sysinit.target local-fs.target
+Before=display-manager.service gdm.service debz-live-tui.service debz-webui.service
+ConditionPathExists=/etc/debz/mok/mok.der
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-live-mok-enroll
+RemainAfterExit=yes
+TimeoutStartSec=120
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

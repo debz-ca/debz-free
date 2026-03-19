@@ -1,0 +1,49 @@
+---
+- name: Add Proxmox release key
+  get_url:
+    url: "http://download.proxmox.com/debian/proxmox-release-bookworm.gpg"
+    dest: /usr/share/keyrings/proxmox-release.gpg
+    mode: "0644"
+  retries: 3
+
+- name: Add Proxmox no-subscription repo
+  copy:
+    dest: /etc/apt/sources.list.d/proxmox-ve.list
+    content: |
+      deb [signed-by=/usr/share/keyrings/proxmox-release.gpg] http://download.proxmox.com/debian/pve bookworm pve-no-subscription
+
+- name: Pin Proxmox packages
+  copy:
+    dest: /etc/apt/preferences.d/proxmox-pin
+    content: |
+      Package: proxmox-ve pve-manager pve-kernel* pve-headers* libpve-* pve-*
+      Pin: release o=Proxmox
+      Pin-Priority: 900
+
+- name: Remove enterprise repo
+  file:
+    path: /etc/apt/sources.list.d/pve-enterprise.list
+    state: absent
+
+- name: Install Proxmox VE
+  apt:
+    name:
+      - proxmox-ve
+      - pve-manager
+      - ifupdown2
+      - open-iscsi
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  retries: 3
+
+- name: Remove os-prober (confuses ZFS boot environments)
+  apt:
+    name: os-prober
+    state: absent
+
+- name: Register ZFS pool with Proxmox
+  command: pvesm add zfspool vms-zfs --pool rpool/vms --sparse 1
+  failed_when: false
+  changed_when: false

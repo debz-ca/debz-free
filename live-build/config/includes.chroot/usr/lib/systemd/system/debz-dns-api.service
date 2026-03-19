@@ -1,0 +1,26 @@
+[Unit]
+Description=debz DNS Registration API
+Documentation=man:debz-dns-api(8)
+After=network-online.target pdns.service
+Wants=network-online.target
+ConditionPathExists=/usr/local/sbin/debz-dns-api
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/debz-dns-api \
+    --bind 0.0.0.0 \
+    --port 8081 \
+    --zone cluster.debz \
+    --ttl 300 \
+    --log /var/log/debz/dns-api.log
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=debz-dns-api
+
+# Only MASTER nodes run this service.
+# Enable with: systemctl enable --now debz-dns-api
+
+[Install]
+WantedBy=multi-user.target

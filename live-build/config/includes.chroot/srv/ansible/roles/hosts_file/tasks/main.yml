@@ -1,0 +1,33 @@
+---
+# Role: hosts_file
+# Ensures /etc/hosts includes all cluster nodes by inventory hostname.
+# Writes on targets and (optionally) on the controller to allow name-based ssh/debug.
+
+- name: Build hosts mapping block
+  ansible.builtin.set_fact:
+    _kubedos_hosts_block: |
+      {% for h in (groups['all'] | sort) %}
+      {% set ip = hostvars[h].get(hosts_file_ip_var, '') %}
+      {% if (ip | string | trim) != '' %}
+      {{ ip }}  {{ h }}  {{ (h.split('.')[0]) }}
+      {% endif %}
+      {% endfor %}
+
+- name: Ensure /etc/hosts contains cluster host mappings (targets)
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} KUBEDOS MANAGED HOSTS"
+    create: true
+    block: "{{ _kubedos_hosts_block }}"
+  become: true
+
+- name: Ensure /etc/hosts contains cluster host mappings (controller)
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} KUBEDOS MANAGED HOSTS"
+    create: true
+    block: "{{ _kubedos_hosts_block }}"
+  become: true
+  delegate_to: localhost
+  run_once: true
+  when: hosts_file_manage_controller | bool

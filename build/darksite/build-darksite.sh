@@ -52,22 +52,10 @@ read_package_set "live-base"
 read_package_set "target-base"
 read_package_set "target-zfs"      # ZFS is a core debz feature
 
-# All installable target profiles — included regardless of ISO profile so any
-# target type can be installed fully offline from the darksite repo.
+# Free edition install targets: Desktop and Server only.
+# Pro/Enterprise ISOs include the full target library (KVM, Storage, Monitoring, etc.)
 read_package_set "target-desktop"
 read_package_set "target-server"
-read_package_set "target-client"
-read_package_set "target-kvm"
-read_package_set "target-storage"
-read_package_set "target-monitoring"
-read_package_set "target-vdi"
-read_package_set "target-proxmox"
-
-# Container runtimes — included in all ISOs for offline container setup
-read_package_set "target-containers"
-
-# Master template packages — always included so any ISO can deploy a master node.
-read_package_set "target-master"
 
 # ── SaltProject APT repo ───────────────────────────────────────────────────────
 _SALT_KEYRING="/usr/share/keyrings/salt-archive-keyring.gpg"
@@ -199,6 +187,46 @@ if [[ "${#CLOSURE[@]}" -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Blacklist — packages pulled in as transitive deps that are too large and
+# not needed for any debz install target.
+# ---------------------------------------------------------------------------
+DARKSITE_BLACKLIST=(
+    # Soundfonts — pulled in by task-gnome-desktop transitively, never needed
+    musescore-general-soundfont
+    musescore-general-soundfont-lossless
+    musescore-general-soundfont-small
+    fluid-soundfont-gm
+    fluidr3mono-gm-soundfont
+    opl3-soundfont
+    timgm6mb-soundfont
+    # Alternative desktop environments / themes — not debz targets
+    enlightenment-data
+    libelementary-data
+    mate-backgrounds
+    breeze-wallpaper
+    lxqt-themes
+    lomiri-sounds
+    lomiri-wallpapers-16.04
+    # Browsers — firefox-esr is already in the live squashfs
+    chromium
+    chromium-common
+    # Package managers we don't use
+    snapd
+)
+
+if [[ "${#DARKSITE_BLACKLIST[@]}" -gt 0 ]]; then
+    log "Applying darksite blacklist (${#DARKSITE_BLACKLIST[@]} entries)..."
+    declare -A _bl
+    for _b in "${DARKSITE_BLACKLIST[@]}"; do _bl["$_b"]=1; done
+    _filtered=()
+    for _p in "${CLOSURE[@]}"; do
+        [[ -z "${_bl[$_p]:-}" ]] && _filtered+=("$_p")
+    done
+    log "  Removed $(( ${#CLOSURE[@]} - ${#_filtered[@]} )) blacklisted packages from closure"
+    CLOSURE=("${_filtered[@]}")
+fi
+
+# ---------------------------------------------------------------------------
 # Download .deb files directly to darksite pool
 # ---------------------------------------------------------------------------
 # apt-get download always fetches to disk regardless of installed state,
@@ -212,19 +240,23 @@ log "Downloading ${#CLOSURE[@]} packages to darksite pool (skipping already-cach
 _dl_new=0
 _dl_skip=0
 _dl_fail=0
+_dl_idx=0
+_dl_total="${#CLOSURE[@]}"
 for _pkg in "${CLOSURE[@]}"; do
-    # Resolve current candidate version from the apt cache
-    _ver="$(apt-cache show "$_pkg" 2>/dev/null | awk '/^Version:/{print $2; exit}')"
-    if [[ -n "$_ver" ]]; then
-        # apt-get download writes epoch ':' as '%3a'; our rename step converts
-        # those back, so check both forms.
-        _f1="${APT_POOL}/${_pkg}_${_ver//:/%3a}_${ARCH}.deb"
-        _f2="${APT_POOL}/${_pkg}_${_ver}_${ARCH}.deb"
-        if [[ -f "$_f1" || -f "$_f2" ]]; then
-            (( _dl_skip++ )) || true
-            continue
-        fi
+    (( _dl_idx++ )) || true
+
+    # Progress heartbeat every 100 packages
+    if (( _dl_idx % 100 == 0 )); then
+        log "Progress: ${_dl_idx}/${_dl_total} — ${_dl_new} new, ${_dl_skip} cached, ${_dl_fail} skipped"
     fi
+
+    # Fast cache check: any version, any arch — avoids apt-cache show for cached packages.
+    # Uses glob; compgen returns 0 if at least one match exists.
+    if compgen -G "${APT_POOL}/${_pkg}_*.deb" > /dev/null 2>&1; then
+        (( _dl_skip++ )) || true
+        continue
+    fi
+
     (cd "$APT_POOL" && apt-get download "$_pkg" 2>/dev/null) && {
         (( _dl_new++ )) || true
     } || {
@@ -341,7 +373,11 @@ fi
 # Download GitHub release binaries (non-APT tools)
 # Stored in ${DARKSITE_OUT}/binaries/<tool>/<version>/
 # Firstboot scripts install them from here when running offline.
+# Pro/Enterprise only — skip entirely for free edition.
 # ---------------------------------------------------------------------------
+if [[ "${EDITION:-free}" == "free" ]]; then
+    log "Free edition: skipping Pro binaries (k9s, helm, firecracker, etc.)"
+else
 
 BINARIES_DIR="${DARKSITE_OUT}/binaries"
 mkdir -p "${BINARIES_DIR}"
@@ -452,9 +488,10 @@ if [[ -n "$FIRECTL_VER" ]]; then
 else
     log "  WARNING: could not resolve firectl latest version — skipping"
 fi
+fi # end EDITION != free
 
 # ── Count cached binaries ─────────────────────────────────────────────────────
-BIN_COUNT=$(find "${BINARIES_DIR}" -type f -not -name VERSION | wc -l)
+BIN_COUNT=$(find "${BINARIES_DIR}" -type f -not -name VERSION 2>/dev/null | wc -l)
 log "GitHub binaries cached: ${BIN_COUNT} files in ${BINARIES_DIR}"
 
 log "====================================================="

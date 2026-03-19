@@ -1,0 +1,18 @@
+[Unit]
+Description=debz live log shipper — rsync logs to remote collector
+Documentation=man:debz-live-log-ship(8)
+After=network-online.target debz-live-ssh-init.service
+Requires=debz-live-ssh-init.service
+# Only run on live session
+ConditionPathExists=/etc/debz/build-marker
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/debz-live-log-ship
+StandardOutput=journal
+StandardError=journal
+# Don't fail the timer if the collector is unreachable
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

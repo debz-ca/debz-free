@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify bundled Debz darksite payload
+After=local-fs.target
+ConditionPathExists=/usr/lib/debz-installer/live/ensure-darksite.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/debz-installer/live/ensure-darksite.sh
+
+[Install]
+WantedBy=multi-user.target

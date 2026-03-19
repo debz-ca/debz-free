@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# =============================================================================
+# debz-live-ssh-init
+#
+# Runs once at live-session boot. Generates a fresh ed25519 keypair for the
+# live user. The public key is printed prominently to the terminal and written
+# to /run/debz-live-pubkey so the operator can grant access from another host.
+#
+# Keypair lives in /home/live/.ssh/ (tmpfs overlay — not persisted to ISO).
+# Credentials: user=live  password=live
+# =============================================================================
+set -euo pipefail
+
+LOG=/var/log/debz/live-ssh-init.log
+mkdir -p /var/log/debz
+exec >> "$LOG" 2>&1
+
+log() { printf '%(%F %T)T  %s\n' -1 "$*"; }
+
+KEY=/home/live/.ssh/id_ed25519
+PUB="${KEY}.pub"
+
+log "=== debz-live-ssh-init starting ==="
+
+# Generate keypair if not already present (idempotent at runtime)
+if [[ ! -f "$KEY" ]]; then
+  install -d -m 0700 /home/live/.ssh
+  chown live:live /home/live/.ssh
+  sudo -u live ssh-keygen -t ed25519 -N "" -C "live@$(hostname -s)" -f "$KEY" \
+    < /dev/null
+  log "Generated live session keypair: $KEY"
+else
+  log "Keypair already exists (skipping): $KEY"
+fi
+
+# Publish to a well-known path for scripts and UI
+install -m 0644 "$PUB" /run/debz-live-pubkey
+log "Public key: /run/debz-live-pubkey"
+
+PUBKEY_VAL=$(cat "$PUB")
+
+# Write MOTD banner so the operator sees credentials on first login
+cat > /etc/motd.d/10-debz-live <<EOF
+
+  ┌─ debz LIVE  ──────────────────────────────────────────────────────────┐
+  │                                                                        │
+  │  This is a LIVE session — all changes are lost on reboot.             │
+  │                                                                        │
+  │  Login:   live / live                                                  │
+  │  SSH in:  ssh live@$(hostname -I | awk '{print $1}')                             │
+  │                                                                        │
+  │  Session public key (add to your ~/.ssh/authorized_keys to connect):  │
+  │  ${PUBKEY_VAL}
+  │                                                                        │
+  │  To install permanently: run the Installer from the desktop dock.     │
+  │                                                                        │
+  └────────────────────────────────────────────────────────────────────────┘
+
+EOF
+
+log "MOTD written — live credentials: live/live"
+log "=== debz-live-ssh-init complete ==="

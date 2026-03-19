@@ -1,0 +1,52 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0;
+    policy drop;
+
+    ct state established,related accept
+    iif "lo" accept
+
+    # ICMP for sanity
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+    # SSH: allow Ansible over mgmt ONLY from controller
+    ip saddr 10.78.0.1 tcp dport 22 accept
+
+    # SSH: allow normal SSH on underlay
+    ip saddr 10.100.10.0/24 tcp dport 22 accept
+
+    # Kubernetes API on LBs (adjust if this file is used on non-LBs too)
+    tcp dport 6443 accept
+
+    # WireGuard (if you use it)
+    udp dport 51820 accept
+
+    # Allow required intra-cluster (you may already have these elsewhere)
+    # etcd client/peer (if etcd nodes)
+    tcp dport { 2379, 2380 } accept
+
+    # kubelet (node)
+    tcp dport 10250 accept
+
+    # nodeport (optional)
+    tcp dport 30000-32767 accept
+    udp dport 30000-32767 accept
+  }
+
+  chain forward {
+    type filter hook forward priority 0;
+    policy drop;
+    ct state established,related accept
+  }
+
+  chain output {
+    type filter hook output priority 0;
+    policy accept;
+  }
+}
+

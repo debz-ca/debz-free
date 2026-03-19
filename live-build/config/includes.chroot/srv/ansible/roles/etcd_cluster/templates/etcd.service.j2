@@ -1,0 +1,22 @@
+[Unit]
+Description=etcd
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=etcd
+Group=etcd
+Type=notify
+
+ExecStart=/usr/bin/etcd --config-file=/etc/etcd/etcd.conf.yml
+
+Restart=on-failure
+RestartSec=2s
+
+# Give etcd more time to form quorum before systemd declares failure
+TimeoutStartSec=5min
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+

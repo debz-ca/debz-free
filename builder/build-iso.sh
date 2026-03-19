@@ -7,7 +7,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 PROFILE="${PROFILE:-desktop}"
-EDITION="${EDITION:-free}"
+EDITION="free"
 ARCH="${ARCH:-amd64}"
 OUTPUT_DIR="${OUTPUT_DIR:-/build/live-build/output}"
 LOG_DIR="${LOG_DIR:-/build/live-build/logs}"
@@ -127,6 +127,25 @@ cp "$PROFILE_LIST" "$ACTIVE_LIST"
 # Configure live-build
 # ---------------------------------------------------------------------------
 
+# ── Disable Pro-only package lists for free edition ───────────────────────────
+PRO_LISTS=(
+    cloud-tools
+    dns-stack
+    ebpf
+    security-tang-clevis
+    template-master
+)
+if [[ "$EDITION" == "free" ]]; then
+    log "Free edition: disabling Pro-only package lists"
+    for _list in "${PRO_LISTS[@]}"; do
+        _path="$LB_ROOT/config/package-lists/${_list}.list.chroot"
+        if [[ -f "$_path" ]]; then
+            mv "$_path" "${_path}.pro-disabled"
+            log "  disabled: ${_list}.list.chroot"
+        fi
+    done
+fi
+
 # ── Bake edition into the chroot overlay ──────────────────────────────────────
 log "Writing edition file: /etc/debz/edition = $EDITION"
 mkdir -p "$LB_ROOT/config/includes.chroot/etc/debz"
@@ -209,6 +228,15 @@ log "Running: lb build  (this will take a while)"
 lb build 2>&1 | tee -a "$LOG_FILE"
 
 log "lb build complete."
+
+# ── Restore Pro-only package lists after build ────────────────────────────────
+if [[ "$EDITION" == "free" ]]; then
+    for _list in "${PRO_LISTS[@]}"; do
+        _path="$LB_ROOT/config/package-lists/${_list}.list.chroot.pro-disabled"
+        [[ -f "$_path" ]] && mv "$_path" "${_path%.pro-disabled}"
+    done
+    log "Free edition: Pro-only package lists restored"
+fi
 
 # ---------------------------------------------------------------------------
 # Locate built ISO

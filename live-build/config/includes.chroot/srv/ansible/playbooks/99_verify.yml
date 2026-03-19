@@ -1,0 +1,29 @@
+---
+- name: Verify cluster state (cp-1)
+  hosts: cp-1.unixbox.net
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Nodes
+      ansible.builtin.command: kubectl get nodes -o wide
+      changed_when: false
+
+    - name: System pods
+      ansible.builtin.command: kubectl get pods -A -o wide
+      changed_when: false
+
+    - name: Cilium status (if installed)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if command -v cilium >/dev/null 2>&1; then
+          cilium status
+        else
+          echo "cilium CLI not present on this node"
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+      failed_when: false
+

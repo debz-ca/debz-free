@@ -1,0 +1,11 @@
+---
+- name: restart_haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: reload_nftables
+  ansible.builtin.service:
+    name: nftables
+    state: restarted
+

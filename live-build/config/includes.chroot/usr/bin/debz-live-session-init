@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+LOG_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+LOG="${LOG_DIR}/debz-live-session.log"
+
+mkdir -p "${LOG_DIR}" 2>/dev/null || true
+touch "${LOG}" 2>/dev/null || true
+
+{
+  echo "[$(date '+%F %T')] live session init"
+  echo "uid=$(id -u) user=$(id -un) DISPLAY=${DISPLAY:-<unset>}"
+
+  systemctl --user daemon-reload 2>/dev/null || true
+  /usr/bin/debz-apply-live-wallpaper || true
+} >>"${LOG}" 2>&1
+
+exit 0

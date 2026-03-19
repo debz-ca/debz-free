@@ -1,0 +1,8 @@
+- name: Load balancers (kube-apiserver)
+  hosts: lb
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: lb_haproxy
+      tags: [lb, loadbalancers, haproxy]

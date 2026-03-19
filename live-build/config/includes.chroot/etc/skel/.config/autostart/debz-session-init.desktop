@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Debz Session Init
+Exec=/usr/bin/debz-live-session-init
+TryExec=/usr/bin/debz-live-session-init
+X-GNOME-Autostart-enabled=true

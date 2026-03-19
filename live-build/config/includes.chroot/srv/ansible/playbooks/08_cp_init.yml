@@ -1,0 +1,19 @@
+- name: Initialize cp1 (kubeadm init on first control-plane)
+  hosts: cp
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Pick bootstrap control-plane (first host in cp group)
+      ansible.builtin.set_fact:
+        cp_bootstrap: "{{ groups['cp'] | first }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: End play on non-bootstrap control-planes
+      ansible.builtin.meta: end_host
+      when: inventory_hostname != hostvars['localhost']['cp_bootstrap']
+
+  roles:
+    - role: kubeadm_init
+      tags: [cp_init, kubeadm, controlplane]

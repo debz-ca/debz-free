@@ -1,0 +1,16 @@
+[Unit]
+Description=debz live log shipper — every 5 minutes
+After=debz-live-ssh-init.service
+ConditionPathExists=/etc/debz/build-marker
+
+[Timer]
+# First ship 90 seconds after boot (give ssh-init time to finish)
+OnBootSec=90s
+# Then every 5 minutes
+OnUnitActiveSec=5min
+# Randomise by up to 30s to avoid thundering herd if multiple nodes boot together
+RandomizedDelaySec=30s
+Unit=debz-live-log-ship.service
+
+[Install]
+WantedBy=timers.target

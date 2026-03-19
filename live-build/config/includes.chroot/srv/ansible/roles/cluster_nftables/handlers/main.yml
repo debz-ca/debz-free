@@ -1,0 +1,3 @@
+---
+- name: Reload nftables
+  command: nft -f /etc/nftables.conf

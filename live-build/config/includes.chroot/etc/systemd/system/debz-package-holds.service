@@ -1,0 +1,10 @@
+[Unit]
+Description=Apply Debz platform package holds
+ConditionPathExists=/usr/sbin/debz-apply-platform-holds
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/debz-apply-platform-holds
+
+[Install]
+WantedBy=multi-user.target

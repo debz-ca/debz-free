@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# debz-issue-cert — issue a node TLS certificate signed by the debz ISO CA.
+#
+# Called at install time and/or firstboot to give each node a cert for
+# mutual TLS (tang<->clevis, inter-node).
+#
+# Usage:
+#   debz-issue-cert --hostname NAME --ip WGIP [--ip WGIP ...] --out-dir DIR
+#
+# Outputs (in OUT_DIR):
+#   ${HOSTNAME}.key          — 2048-bit RSA private key (mode 600)
+#   ${HOSTNAME}.crt          — signed certificate
+#   ${HOSTNAME}-bundle.pem   — cert + CA chain (for presenting to peers)
+#   ca.crt                   — copy of the ISO CA certificate
+set -euo pipefail
+
+LOG_DIR="/var/log/debz"
+LOG_FILE="${LOG_DIR}/cert-issuance.log"
+
+log() {
+  printf '[%(%F %T)T] [issue-cert] %s\n' -1 "$*" | tee -a "${LOG_FILE}" >&2
+}
+die() { log "FATAL: $*"; exit 1; }
+
+CA_DIR="/etc/debz/ca"
+CA_KEY="${CA_DIR}/ca.key"
+CA_CRT="${CA_DIR}/ca.crt"
+CA_CNF="${CA_DIR}/openssl.cnf"
+
+HOSTNAME_ARG=""
+declare -a IP_ARGS=()
+OUT_DIR=""
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --hostname) HOSTNAME_ARG="${2:?--hostname requires a value}"; shift 2 ;;
+    --ip)       IP_ARGS+=("${2:?--ip requires a value}");         shift 2 ;;
+    --out-dir)  OUT_DIR="${2:?--out-dir requires a value}";       shift 2 ;;
+    *) die "Unknown argument: $1" ;;
+  esac
+done
+
+# ── Validation ────────────────────────────────────────────────────────────────
+
+[[ -n "${HOSTNAME_ARG}" ]] || die "--hostname is required"
+[[ -n "${OUT_DIR}" ]]      || die "--out-dir is required"
+[[ ${#IP_ARGS[@]} -gt 0 ]] || die "At least one --ip address is required"
+
+[[ -f "${CA_KEY}" ]] || die "CA key not found at ${CA_KEY}. Is this a debz ISO?"
+[[ -f "${CA_CRT}" ]] || die "CA cert not found at ${CA_CRT}."
+[[ -f "${CA_CNF}" ]] || die "CA config not found at ${CA_CNF}."
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+
+mkdir -p "${LOG_DIR}"
+mkdir -p "${OUT_DIR}"
+
+NODE_KEY="${OUT_DIR}/${HOSTNAME_ARG}.key"
+NODE_CSR="${OUT_DIR}/${HOSTNAME_ARG}.csr"
+NODE_CRT="${OUT_DIR}/${HOSTNAME_ARG}.crt"
+NODE_BUNDLE="${OUT_DIR}/${HOSTNAME_ARG}-bundle.pem"
+NODE_CA_COPY="${OUT_DIR}/ca.crt"
+
+# Temporary ext file for SAN — cleaned up on exit
+EXT_FILE="$(mktemp /tmp/debz-cert-ext.XXXXXX)"
+cleanup() { rm -f "${EXT_FILE}" "${NODE_CSR}"; }
+trap cleanup EXIT
+
+log "Issuing certificate for host='${HOSTNAME_ARG}' ips='${IP_ARGS[*]}' out='${OUT_DIR}'"
+
+# ── Generate node private key (2048-bit RSA) ──────────────────────────────────
+
+log "Generating 2048-bit RSA key: ${NODE_KEY}"
+openssl genrsa -out "${NODE_KEY}" 2048
+chmod 600 "${NODE_KEY}"
+
+# ── Build SAN extension file ──────────────────────────────────────────────────
+
+log "Building SAN extension with DNS:${HOSTNAME_ARG} + ${#IP_ARGS[@]} IP(s)..."
+{
+  echo "[ node_san_ext ]"
+  echo "subjectKeyIdentifier   = hash"
+  echo "authorityKeyIdentifier = keyid,issuer"
+  echo "basicConstraints       = CA:FALSE"
+  echo "keyUsage               = critical,digitalSignature,keyEncipherment"
+  echo "extendedKeyUsage       = serverAuth,clientAuth"
+  printf "subjectAltName         = DNS:%s" "${HOSTNAME_ARG}"
+  for ip in "${IP_ARGS[@]}"; do
+    printf ",IP:%s" "${ip}"
+  done
+  printf "\n"
+} > "${EXT_FILE}"
+
+# ── Generate CSR ──────────────────────────────────────────────────────────────
+
+log "Generating CSR..."
+openssl req -new \
+  -key "${NODE_KEY}" \
+  -out "${NODE_CSR}" \
+  -subj "/CN=${HOSTNAME_ARG}/O=debz"
+
+# ── Sign the CSR with the ISO CA ──────────────────────────────────────────────
+
+log "Signing CSR with ISO CA (365 days)..."
+openssl x509 -req \
+  -in "${NODE_CSR}" \
+  -CA "${CA_CRT}" \
+  -CAkey "${CA_KEY}" \
+  -CAserial "${CA_DIR}/serial" \
+  -out "${NODE_CRT}" \
+  -days 365 \
+  -sha256 \
+  -extfile "${EXT_FILE}" \
+  -extensions node_san_ext
+chmod 644 "${NODE_CRT}"
+
+# ── Build combined bundle (cert + CA chain) ───────────────────────────────────
+
+log "Writing bundle: ${NODE_BUNDLE}"
+cat "${NODE_CRT}" "${CA_CRT}" > "${NODE_BUNDLE}"
+chmod 644 "${NODE_BUNDLE}"
+
+# ── Copy CA cert into out-dir ─────────────────────────────────────────────────
+
+log "Copying CA cert to ${NODE_CA_COPY}"
+cp "${CA_CRT}" "${NODE_CA_COPY}"
+chmod 644 "${NODE_CA_COPY}"
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+FINGERPRINT="$(openssl x509 -in "${NODE_CRT}" -noout -fingerprint -sha256)"
+log "Certificate issued successfully."
+log "  key    : ${NODE_KEY}"
+log "  cert   : ${NODE_CRT}"
+log "  bundle : ${NODE_BUNDLE}"
+log "  ca     : ${NODE_CA_COPY}"
+log "  ${FINGERPRINT}"

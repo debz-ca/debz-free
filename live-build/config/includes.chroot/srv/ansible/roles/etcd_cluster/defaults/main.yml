@@ -1,0 +1,17 @@
+---
+# Where PKI artifacts live on the controller (localhost).
+# Your earlier "Generate etcd PKI artifacts on controller" play uses /srv/ansible/artifacts/etcd-pki
+etcd_pki_controller_dir: "/srv/ansible/artifacts/etcd-pki"
+
+# Where PKI should be installed on each etcd node
+etcd_pki_dir: "/etc/etcd/pki"
+
+# Ownership/modes so the systemd service User=etcd can read keys/certs
+etcd_pki_owner: "root"
+etcd_pki_group: "etcd"
+etcd_pki_dir_mode: "0750"
+
+# certs can be world-readable; keys should be readable by group etcd
+etcd_pki_cert_mode: "0644"
+etcd_pki_key_mode: "0640"
+

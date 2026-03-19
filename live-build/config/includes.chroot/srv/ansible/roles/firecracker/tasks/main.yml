@@ -1,0 +1,86 @@
+---
+- name: Set Firecracker version
+  set_fact:
+    fc_version: "v1.10.1"
+    fc_arch: "x86_64"
+
+- name: Download Firecracker release
+  get_url:
+    url: "https://github.com/firecracker-microvm/firecracker/releases/download/{{ fc_version }}/firecracker-{{ fc_version }}-{{ fc_arch }}.tgz"
+    dest: /tmp/firecracker.tgz
+    mode: "0644"
+  retries: 3
+  delay: 10
+
+- name: Extract Firecracker
+  unarchive:
+    src: /tmp/firecracker.tgz
+    dest: /tmp/
+    remote_src: true
+
+- name: Install firecracker binary
+  copy:
+    src: "/tmp/release-{{ fc_version }}-{{ fc_arch }}/firecracker-{{ fc_version }}-{{ fc_arch }}"
+    dest: /usr/local/bin/firecracker
+    mode: "0755"
+    remote_src: true
+
+- name: Install jailer binary
+  copy:
+    src: "/tmp/release-{{ fc_version }}-{{ fc_arch }}/jailer-{{ fc_version }}-{{ fc_arch }}"
+    dest: /usr/local/bin/jailer
+    mode: "0755"
+    remote_src: true
+
+- name: Create Firecracker config directory
+  file:
+    path: /etc/firecracker
+    state: directory
+    mode: "0755"
+
+- name: Install TAP helper
+  copy:
+    dest: /usr/local/sbin/fc-tap-create
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TAP="${1:?usage: fc-tap-create <tap-name> [bridge]}"
+      BRIDGE="${2:-br0}"
+      ip tuntap add dev "${TAP}" mode tap
+      ip link set "${TAP}" up
+      [[ -n "${BRIDGE}" ]] && ip link set "${TAP}" master "${BRIDGE}" || true
+      echo "${TAP} ready on ${BRIDGE}"
+
+- name: Install Firecracker systemd template unit
+  copy:
+    dest: /usr/lib/systemd/system/firecracker@.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Firecracker microVM %i
+      After=network.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/firecracker \
+        --api-sock /run/firecracker/%i.socket \
+        --config-file /etc/firecracker/%i.json
+      RuntimeDirectory=firecracker
+      ConfigurationDirectory=firecracker
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Systemd daemon reload
+  systemd:
+    daemon_reload: true
+
+- name: Clean up temp files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/firecracker.tgz
+    - "/tmp/release-{{ fc_version }}-{{ fc_arch }}"

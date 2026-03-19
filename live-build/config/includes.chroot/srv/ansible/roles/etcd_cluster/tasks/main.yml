@@ -1,0 +1,135 @@
+---
+# Role: etcd_cluster
+# Deploy etcd with mutual TLS (client + peer) and deterministic IP/SAN binding.
+# Key rule: the IP used in etcd listen/advertise URLs must be present in cert SANs.
+
+- name: Install etcd server + client (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - etcd-server
+      - etcd-client
+    state: present
+    update_cache: true
+
+- name: Ensure etcd config dir exists
+  ansible.builtin.file:
+    path: /etc/etcd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Compute etcd bind IP (prefer etcd_ip)
+  ansible.builtin.set_fact:
+    etcd_bind_ip: "{{ etcd_ip | default(underlay_ip | default(ansible_default_ipv4.address), true) }}"
+- name: Assert etcd_bind_ip is set
+  ansible.builtin.assert:
+    that:
+      - (etcd_bind_ip | string | trim) != ""
+    fail_msg: >-
+      etcd_bind_ip empty. Define etcd_ip per host (recommended), or underlay_ip.
+
+# Build initial-cluster from inventory using etcd_ip (preferred) per host.
+# IMPORTANT: store this fact on localhost using delegate_facts so all hosts can reference it.
+- name: Build etcd_initial_cluster from inventory (run once, store on localhost)
+  ansible.builtin.set_fact:
+    etcd_initial_cluster: >-
+      {%- set parts = [] -%}
+      {%- for h in (groups['etcd'] | sort) -%}
+      {%- set ip = (hostvars[h].etcd_ip
+                    | default(hostvars[h].underlay_ip
+                    | default(hostvars[h].ansible_default_ipv4.address))) -%}
+      {%- if (ip | string | trim) != '' -%}
+      {%-   set _ = parts.append(h ~ '=https://' ~ ip ~ ':2380') -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ parts | join(',') }}
+  run_once: true
+  delegate_to: localhost
+  delegate_facts: true
+
+- name: Assert etcd_initial_cluster is non-empty (from localhost facts)
+  ansible.builtin.assert:
+    that:
+      - (hostvars['localhost']['etcd_initial_cluster'] | default('') | trim) != ""
+    fail_msg: >-
+      etcd_initial_cluster could not be computed. Ensure each etcd host has etcd_ip or underlay_ip.
+
+- name: Set etcd cluster vars on all nodes
+  ansible.builtin.set_fact:
+    etcd_initial_cluster: "{{ hostvars['localhost']['etcd_initial_cluster'] }}"
+    etcd_initial_cluster_state: "{{ etcd_initial_cluster_state | default('new') }}"
+
+# --- PKI must exist before rendering config ---
+- name: Build etcd PKI (CA + per-node certs)
+  ansible.builtin.include_tasks: pki.yml
+
+- name: Render etcd config
+  ansible.builtin.template:
+    src: etcd.conf.yml.j2
+    dest: /etc/etcd/etcd.conf.yml
+    owner: root
+    group: root
+    mode: "0644"
+  register: _etcd_conf
+
+- name: Install systemd unit for etcd
+  ansible.builtin.template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _etcd_unit
+
+- name: Reload systemd if unit changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _etcd_unit.changed
+
+- name: Enable etcd
+  ansible.builtin.systemd:
+    name: etcd
+    enabled: true
+
+# Restart etcd and emit logs on failure (no async polling blindness)
+- name: Restart etcd if config or unit changed
+  block:
+    - name: Restart etcd
+      ansible.builtin.systemd:
+        name: etcd
+        state: restarted
+
+    - name: Wait for local etcd client port
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 2379
+        delay: 2
+        timeout: 120
+  when: _etcd_conf.changed or _etcd_unit.changed
+
+  rescue:
+    - name: systemctl status etcd
+      ansible.builtin.command: systemctl status etcd --no-pager -l
+      register: _etcd_status
+      changed_when: false
+      failed_when: false
+
+    - name: journalctl -u etcd
+      ansible.builtin.command: journalctl -u etcd -n 200 --no-pager
+      register: _etcd_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Emit etcd diagnostics
+      ansible.builtin.debug:
+        msg: |
+          etcd restart failed on {{ inventory_hostname }}.
+          --- systemctl status ---
+          {{ _etcd_status.stdout | default('') }}
+          --- journalctl -u etcd ---
+          {{ _etcd_journal.stdout | default('') }}
+
+    - name: Hard fail
+      ansible.builtin.fail:
+        msg: "etcd restart failed on {{ inventory_hostname }}"

@@ -1,0 +1,34 @@
+# Managed by Ansible (etcd_cluster role)
+# etcd configuration file (YAML)
+# See: https://etcd.io/docs/v3.5/op-guide/configuration/
+
+{% set etcd_bind_ip = (etcd_ip | default(underlay_ip | default(ansible_default_ipv4.address))) %}
+
+name: "{{ inventory_hostname }}"
+data-dir: "/var/lib/etcd/default"
+
+# Prefer underlay (10.100.x.x) for cluster traffic; also listen on localhost for local tooling.
+listen-peer-urls: "https://{{ etcd_bind_ip }}:2380"
+listen-client-urls: "https://{{ etcd_bind_ip }}:2379,https://127.0.0.1:2379"
+
+# Advertise underlay IPs to avoid DNS dependency inside the cluster.
+initial-advertise-peer-urls: "https://{{ etcd_bind_ip }}:2380"
+advertise-client-urls: "https://{{ etcd_bind_ip }}:2379"
+
+initial-cluster: "{% for host in groups['etcd'] %}{{ host }}=https://{{ hostvars[host]['underlay_ip'] | default(hostvars[host]['ansible_host'] | default(host)) }}:2380{% if not loop.last %},{% endif %}{% endfor %}"
+initial-cluster-state: "{{ etcd_initial_cluster_state }}"
+initial-cluster-token: "kubeos-etcd"
+
+# TLS (client)
+client-transport-security:
+  cert-file: "/etc/etcd/pki/server.crt"
+  key-file: "/etc/etcd/pki/server.key"
+  client-cert-auth: true
+  trusted-ca-file: "/etc/etcd/pki/ca.crt"
+
+# TLS (peer)
+peer-transport-security:
+  cert-file: "/etc/etcd/pki/peer.crt"
+  key-file: "/etc/etcd/pki/peer.key"
+  client-cert-auth: true
+  trusted-ca-file: "/etc/etcd/pki/ca.crt"

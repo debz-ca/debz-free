@@ -1,3 +1,0 @@
-# Thin client profile packages (beyond target-base)
-network-manager
-wpasupplicant

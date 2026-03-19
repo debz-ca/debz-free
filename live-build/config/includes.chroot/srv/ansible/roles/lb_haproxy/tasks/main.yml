@@ -1,0 +1,27 @@
+- name: Install haproxy
+  apt:
+    name: haproxy
+    state: present
+    update_cache: yes
+
+- name: Render haproxy config
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: "0644"
+  notify: restart_haproxy
+
+- name: Enable and start haproxy
+  service:
+    name: haproxy
+    enabled: true
+    state: started
+
+- name: Allow LAN access to kube-apiserver VIP/ports on LBs (TCP/6443)
+  ansible.builtin.lineinfile:
+    path: /etc/nftables.conf
+    insertafter: '^\s*chain input \{'
+    line: '    ip saddr 10.100.10.0/24 tcp dport 6443 accept'
+    state: present
+  notify: reload_nftables
+

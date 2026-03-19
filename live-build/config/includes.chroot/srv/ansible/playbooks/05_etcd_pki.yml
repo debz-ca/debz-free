@@ -1,0 +1,11 @@
+- name: Generate etcd PKI artifacts on controller
+  hosts: controller
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: "Generate etcd PKI via etcd_cluster role (tasks_from=pki)"
+      ansible.builtin.include_role:
+        name: etcd_cluster
+        tasks_from: pki
+      tags: [etcd, pki]

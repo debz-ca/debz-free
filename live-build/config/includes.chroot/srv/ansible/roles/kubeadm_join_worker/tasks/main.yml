@@ -1,0 +1,28 @@
+---
+# roles/kubeadm_join_worker/tasks/main.yml
+#
+# Joins worker nodes using kubeadm join facts published by the bootstrap control-plane.
+
+- name: Select bootstrap control-plane host
+  ansible.builtin.set_fact:
+    cp_bootstrap: "{{ (groups['cp'] | default([]) + groups['control_plane'] | default([])) | first }}"
+  changed_when: false
+
+- name: Assert bootstrap join facts exist
+  ansible.builtin.assert:
+    that:
+      - cp_bootstrap is defined
+      - cp_bootstrap | length > 0
+      - hostvars[cp_bootstrap].kubeadm_join_worker_cmd is defined
+    fail_msg: >-
+      Missing kubeadm join facts. Ensure the control-plane init play ran successfully on the bootstrap CP
+      and published kubeadm_join_worker_cmd.
+
+- name: Join worker to cluster
+  ansible.builtin.shell: >
+    {{ hostvars[cp_bootstrap].kubeadm_join_worker_cmd }}
+    --node-name {{ inventory_hostname }}
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+    executable: /bin/bash
+

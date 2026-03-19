@@ -1,0 +1,97 @@
+---
+# Role: containerd
+# Installs and configures containerd for Kubernetes.
+# Designed to be safe under `--check` (dry-run):
+# - We create /etc/containerd for real so later file ops don't explode.
+# - We DO NOT attempt to start/enable the service in --check (systemd unit won't exist).
+# - If containerd isn't actually installed (typical in --check), we write a placeholder config
+#   so subsequent replace operations have a target file.
+
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: yes
+
+# In --check mode, apt doesn't really install packages, so /etc/containerd may not exist unless we force it.
+- name: Ensure containerd config directory (real, even in --check)
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+  check_mode: no
+
+- name: Check if containerd binary exists
+  ansible.builtin.stat:
+    path: /usr/bin/containerd
+  register: containerd_bin
+
+- name: Check if containerd config exists
+  ansible.builtin.stat:
+    path: /etc/containerd/config.toml
+  register: containerd_config
+
+# Generate default config (from the actual installed containerd) when possible.
+- name: Generate default containerd config (stdout)
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+  when:
+    - not containerd_config.stat.exists
+    - containerd_bin.stat.exists
+    - not ansible_check_mode
+
+# If we're in --check (or the binary isn't present yet), write a lightweight placeholder config.
+# This is only to keep the playbook deterministic in dry-run; the service isn't started in --check.
+- name: Write placeholder containerd config (dry-run safety)
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: |
+      version = 2
+
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+        runtime_type = "io.containerd.runc.v2"
+
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+        SystemdCgroup = true
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not containerd_config.stat.exists
+    - ansible_check_mode or (not containerd_bin.stat.exists)
+  check_mode: no
+
+# Write the real default config when missing (real write even in --check is not needed here because this branch
+# is already gated to non-check; we still keep it explicit).
+- name: Write default containerd config if missing
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_default_config.stdout }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not containerd_config.stat.exists
+    - containerd_bin.stat.exists
+    - not ansible_check_mode
+  notify: restart_containerd
+
+# Ensure SystemdCgroup is enabled (idempotent).
+# The placeholder already sets it, but the real default config needs a flip.
+- name: Enable SystemdCgroup
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup\s*=\s*false'
+    replace: 'SystemdCgroup = true'
+  notify: restart_containerd
+
+# Don't touch systemd service management in --check; it will fail because the unit isn't installed for real.
+- name: Enable and start containerd
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+

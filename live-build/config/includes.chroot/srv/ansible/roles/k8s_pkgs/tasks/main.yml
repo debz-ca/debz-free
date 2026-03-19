@@ -1,0 +1,220 @@
+---
+# Role: k8s_pkgs
+# Installs kubelet/kubeadm/kubectl from pkgs.k8s.io and configures kubelet --node-ip.
+#
+# Ordering contract:
+#   - Repo/key install happens before package resolution.
+#   - Version resolution is DAG-safe (run_once, fact-host).
+# Idempotency:
+#   - Safe to re-run; packages are held by default and won't drift unless explicitly changed.
+
+- name: Set fact-host (single source of truth host for run_once facts)
+  ansible.builtin.set_fact:
+    k8s_fact_host: "{{ ansible_play_hosts_all[0] }}"
+  run_once: true
+
+- name: Require k8s_node_ip to be set (deterministic node identity)
+  ansible.builtin.assert:
+    that:
+      - (k8s_node_ip | default('') | trim) != ""
+    fail_msg: >-
+      k8s_node_ip must be set for {{ inventory_hostname }} (host_vars recommended).
+  changed_when: false
+
+- name: Set effective node IP (single source of truth for kubelet)
+  ansible.builtin.set_fact:
+    k8s_node_ip_effective: "{{ k8s_node_ip | default(k8s_node_ip_default | default(ansible_default_ipv4.address)) }}"
+  changed_when: false
+
+- name: Fetch stable.txt if needed (only when no pinned/full version)
+  ansible.builtin.uri:
+    url: "{{ k8s_release_channel_url }}"
+    return_content: true
+    timeout: 15
+  register: k8s_stable_txt
+  run_once: true
+  delegate_to: localhost
+  when:
+    - (k8s_semver_pinned | default('') | trim) == ""
+    - (k8s_full_version | default('') | trim) == ""
+    - (k8s_version | default('') | trim) in ["", "stable"]
+    - (k8s_version_auto | default(true) | bool)
+  check_mode: no
+
+- name: Resolve semver + minor repo (authoritative on fact-host)
+  ansible.builtin.set_fact:
+    k8s_semver_resolved: >-
+      {{
+        (k8s_semver_pinned | trim)
+        if ((k8s_semver_pinned | default('') | trim) != "")
+        else
+        (
+          ((k8s_full_version | trim) | regex_replace('^v',''))
+          if ((k8s_full_version | default('') | trim) != "")
+          else
+          (
+            ((k8s_version | trim) | regex_replace('^v',''))
+            if ((k8s_version | default('') | trim) not in ["", "stable"])
+            else
+            (
+              (k8s_stable_txt.content | trim | regex_replace('^v',''))
+              if (k8s_stable_txt is defined and (k8s_stable_txt.content | default('') | trim) != "")
+              else ""
+            )
+          )
+        )
+      }}
+    k8s_full_version_resolved: "v{{ hostvars[k8s_fact_host]['k8s_semver_resolved'] | default('') }}"
+    k8s_minor_repo_resolved: >-
+      {{
+        (k8s_minor_repo | trim)
+        if ((k8s_minor_repo | default('') | trim) != "")
+        else
+        (
+          'v' ~ (hostvars[k8s_fact_host]['k8s_semver_resolved'] | default('')
+                | regex_replace('^v','')
+                | regex_replace('^([0-9]+\.[0-9]+).*','\1'))
+        )
+      }}
+    k8s_repo_url: "https://pkgs.k8s.io/core:/stable:/{{ hostvars[k8s_fact_host]['k8s_minor_repo_resolved'] }}/deb/"
+  run_once: true
+  delegate_to: "{{ k8s_fact_host }}"
+  delegate_facts: true
+  check_mode: no
+
+- name: Fail fast if Kubernetes version could not be resolved
+  ansible.builtin.assert:
+    that:
+      - (hostvars[k8s_fact_host].k8s_semver_resolved | default('') | trim) != ""
+      - (hostvars[k8s_fact_host].k8s_minor_repo_resolved | default('') | trim) != ""
+    fail_msg: >-
+      Could not resolve Kubernetes version.
+      Provide k8s_semver_pinned (preferred) or set k8s_full_version / k8s_version.
+  run_once: true
+  delegate_to: "{{ k8s_fact_host }}"
+  changed_when: false
+
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Kubernetes signing key (pkgs.k8s.io)
+  ansible.builtin.get_url:
+    url: "{{ hostvars[k8s_fact_host].k8s_repo_url }}Release.key"
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+    mode: "0644"
+
+- name: Dearmor Kubernetes signing key into apt keyring
+  ansible.builtin.command: >
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /etc/apt/keyrings/kubernetes-apt-keyring.asc
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  changed_when: false
+  check_mode: no
+
+- name: Add Kubernetes apt repository (pkgs.k8s.io)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    mode: "0644"
+    content: |
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] {{ hostvars[k8s_fact_host].k8s_repo_url }} /
+  register: _k8s_repo_list
+
+- name: Apt update after adding Kubernetes repo
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  check_mode: no
+
+- name: Set pinned deb versions from manifest if present
+  ansible.builtin.set_fact:
+    k8s_deb_kubelet: "{{ (k8s_deb_versions.kubelet | default('') | trim) }}"
+    k8s_deb_kubeadm: "{{ (k8s_deb_versions.kubeadm | default('') | trim) }}"
+    k8s_deb_kubectl: "{{ (k8s_deb_versions.kubectl | default('') | trim) }}"
+  when: k8s_deb_versions is defined
+  changed_when: false
+
+- name: Resolve kubelet package version from apt (prefer exact, fallback to latest patch within semver)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    semver="{{ hostvars[k8s_fact_host].k8s_semver_resolved }}"
+    apt-cache madison kubelet | awk '{print $3}' | grep -E "^${semver}-" | sort -rV | head -n1
+  register: _k8s_kubelet_ver
+  when: (k8s_deb_kubelet | default('') | trim) == ""
+  changed_when: false
+  check_mode: no
+
+- name: Resolve kubeadm package version from apt (prefer exact, fallback to latest patch within semver)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    semver="{{ hostvars[k8s_fact_host].k8s_semver_resolved }}"
+    apt-cache madison kubeadm | awk '{print $3}' | grep -E "^${semver}-" | sort -rV | head -n1
+  register: _k8s_kubeadm_ver
+  when: (k8s_deb_kubeadm | default('') | trim) == ""
+  changed_when: false
+  check_mode: no
+
+- name: Resolve kubectl package version from apt (prefer exact, fallback to latest patch within semver)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    semver="{{ hostvars[k8s_fact_host].k8s_semver_resolved }}"
+    apt-cache madison kubectl | awk '{print $3}' | grep -E "^${semver}-" | sort -rV | head -n1
+  register: _k8s_kubectl_ver
+  when: (k8s_deb_kubectl | default('') | trim) == ""
+  changed_when: false
+  check_mode: no
+
+- name: Publish resolved deb versions (run once)
+  ansible.builtin.set_fact:
+    k8s_deb_kubelet: "{{ (k8s_deb_kubelet | default('') | trim) if (k8s_deb_kubelet is defined and (k8s_deb_kubelet | trim) != '') else _k8s_kubelet_ver.stdout | trim }}"
+    k8s_deb_kubeadm: "{{ (k8s_deb_kubeadm | default('') | trim) if (k8s_deb_kubeadm is defined and (k8s_deb_kubeadm | trim) != '') else _k8s_kubeadm_ver.stdout | trim }}"
+    k8s_deb_kubectl: "{{ (k8s_deb_kubectl | default('') | trim) if (k8s_deb_kubectl is defined and (k8s_deb_kubectl | trim) != '') else _k8s_kubectl_ver.stdout | trim }}"
+  run_once: true
+  delegate_to: "{{ k8s_fact_host }}"
+  delegate_facts: true
+  changed_when: false
+  check_mode: no
+
+- name: Fail if requested Kubernetes version is not present in the repo
+  ansible.builtin.assert:
+    that:
+      - (hostvars[k8s_fact_host].k8s_deb_kubelet | default('') | trim) != ""
+      - (hostvars[k8s_fact_host].k8s_deb_kubeadm | default('') | trim) != ""
+      - (hostvars[k8s_fact_host].k8s_deb_kubectl | default('') | trim) != ""
+    fail_msg: >-
+      Kubernetes v{{ hostvars[k8s_fact_host].k8s_semver_resolved }} not available in apt repo {{ hostvars[k8s_fact_host].k8s_repo_url }}.
+      Either adjust k8s_minor_repo, or regenerate group_vars/all/k8s_versions.yml with tools/k8s_repo_manifest.yml.
+  run_once: true
+  delegate_to: "{{ k8s_fact_host }}"
+  changed_when: false
+
+- name: Install kubelet/kubeadm/kubectl (pinned)
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ hostvars[k8s_fact_host].k8s_deb_kubelet }}"
+      - "kubeadm={{ hostvars[k8s_fact_host].k8s_deb_kubeadm }}"
+      - "kubectl={{ hostvars[k8s_fact_host].k8s_deb_kubectl }}"
+    state: present
+    allow_downgrade: true
+  register: _k8s_pkgs_install
+  notify: restart kubelet
+
+- name: Hold kubelet/kubeadm/kubectl (prevent drift)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Ensure kubelet extra args include --node-ip={{ k8s_node_ip_effective }}
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    mode: "0644"
+    content: |
+      KUBELET_EXTRA_ARGS=--node-ip={{ k8s_node_ip_effective }}
+  notify: restart kubelet
+

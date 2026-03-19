@@ -1,0 +1,44 @@
+---
+- name: Install Cilium + Hubble (bootstrap on cp-1)
+  hosts: cp-1.unixbox.net
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    cilium_version: "v1.16.5"   # pin this in group_vars if you prefer
+    hubble_enable: true
+
+  tasks:
+    - name: Assert kubectl exists on bootstrap control plane
+      ansible.builtin.command: kubectl version --client=true
+      changed_when: false
+
+    - name: Install Cilium CLI (pinned)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        arch="$(dpkg --print-architecture)"
+        ver="{{ cilium_version }}"
+        tmpdir="$(mktemp -d)"
+        trap 'rm -rf "${tmpdir}"' EXIT
+        curl -fsSL -o "${tmpdir}/cilium.tar.gz" "https://github.com/cilium/cilium-cli/releases/download/${ver}/cilium-linux-${arch}.tar.gz"
+        tar -C "${tmpdir}" -xzf "${tmpdir}/cilium.tar.gz"
+        install -m 0755 "${tmpdir}/cilium" /usr/local/bin/cilium
+        /usr/local/bin/cilium version
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Install Cilium into cluster
+      ansible.builtin.shell: |
+        set -euo pipefail
+        # Minimal example; tune values to your backplane model (kube-proxy replacement, routing mode, etc.)
+        /usr/local/bin/cilium install
+        {% if hubble_enable %}
+        /usr/local/bin/cilium hubble enable
+        {% endif %}
+        /usr/local/bin/cilium status --wait
+      args:
+        executable: /bin/bash
+      changed_when: false
+

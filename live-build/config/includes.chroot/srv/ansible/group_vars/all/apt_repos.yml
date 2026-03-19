@@ -1,0 +1,54 @@
+---
+# group_vars/all/apt_repos.yml
+#
+# Authoritative repo catalog, selected by host "class" inside roles/apt_repos.
+# IMPORTANT:
+# - Keys under apt_repos_by_class MUST be unique. No duplicates.
+# - Keep Kubernetes minor derived from k8s_semver_pinned when present.
+
+# Derive k8s minor from pinned semver (ex: 1.35.0 -> v1.35)
+k8s_minor_repo: "v{{ (k8s_semver_pinned | default('1.35.0')).split('.')[0] }}.{{ (k8s_semver_pinned | default('1.35.0')).split('.')[1] }}"
+
+apt_repos_by_class:
+  # Applied to every node
+  global:
+    # Salt Project (Broadcom) repo - used for discovery/config tooling if you rely on salt packages
+    - name: saltproject
+      type: list
+      path: /etc/apt/sources.list.d/saltproject.list
+      line: "deb [signed-by=/etc/apt/keyrings/saltproject.gpg] https://packages.broadcom.com/artifactory/saltproject-deb stable main"
+      key_mode: raw
+      key_url: "https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public"
+      keyring_path: /etc/apt/keyrings/saltproject.gpg
+      pin:
+        package: "*"
+        origin: "packages.broadcom.com"
+        priority: 600
+
+  # External etcd nodes
+  etcd: []
+
+  # Kubernetes nodes (cp + workers)
+  kubernetes:
+    - name: kubernetes
+      type: list
+      path: /etc/apt/sources.list.d/kubernetes.list
+      line: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_minor_repo }}/deb/ /"
+      key_mode: asc_dearmor
+      key_url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_minor_repo }}/deb/Release.key"
+      keyring_path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      keyring_asc_path: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+      pin:
+        package: "kubelet kubeadm kubectl"
+        origin: "pkgs.k8s.io"
+        priority: 1001
+
+  # Load balancers (HAProxy/keepalived, etc.)
+  lb: []
+
+  # Observability nodes
+  monitoring: []
+
+  # Storage node(s)
+  storage: []
+

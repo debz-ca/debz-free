@@ -154,6 +154,9 @@ k_install_system_files() {
   mkdir -p "${target}/etc/systemd/system/timers.target.wants"
   ln -sf "/usr/lib/systemd/system/debz-srv-snapshot.timer" \
     "${target}/etc/systemd/system/timers.target.wants/debz-srv-snapshot.timer" || true
+  # Sanoid scheduled snapshots (daily/weekly/monthly/yearly)
+  ln -sf "/lib/systemd/system/sanoid.timer" \
+    "${target}/etc/systemd/system/timers.target.wants/sanoid.timer" || true
 
   mkdir -p "${target}/etc/systemd/system/multi-user.target.wants"
   ln -sf "/usr/lib/systemd/system/debz-firstboot.service" \

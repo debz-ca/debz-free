@@ -1,0 +1,47 @@
+- name: Install helm (needed for cilium)
+  apt:
+    name: "{{ helm_version_pkg }}"
+    state: present
+    update_cache: yes
+
+- name: Add cilium repo
+  command: helm repo add cilium https://helm.cilium.io
+  changed_when: false
+
+- name: Update helm repos
+  command: helm repo update
+  changed_when: false
+
+- name: Detect interface name that owns k8s_node_ip (10.100) (e.g. ens18)
+  shell: "ip -o -4 addr show | awk '$4 ~ /^{{ k8s_node_ip }}\\// {print $2; exit}'"
+  register: devname
+  changed_when: false
+
+- name: Fail if we cannot detect the 10.100 interface
+  assert:
+    that:
+      - devname.stdout is match('^[a-zA-Z0-9._:-]+$')
+    fail_msg: "Could not detect interface for k8s_node_ip={{ k8s_node_ip }}. Check ip addr."
+
+- name: Install/upgrade cilium (VXLAN) (run on cp1)
+  command: >
+    helm upgrade --install cilium cilium/cilium
+    --namespace kube-system --create-namespace
+    --set image.tag={{ cilium_version }}
+    --set operator.image.tag={{ cilium_version }}
+    --set kubeProxyReplacement={{ 'true' if cilium_kube_proxy_replacement else 'false' }}
+    --set tunnel={{ cilium_tunnel_mode }}
+    --set devices={{ devname.stdout }}
+    --set k8sServiceHost={{ k8s_api_endpoint }}
+    --set k8sServicePort=6443
+    --set ipam.mode=kubernetes
+  changed_when: true
+
+- name: Wait for cilium daemonset rollout
+  shell: "kubectl -n kube-system rollout status ds/cilium --timeout=600s"
+  changed_when: false
+
+- name: Wait for cilium-operator rollout
+  shell: "kubectl -n kube-system rollout status deploy/cilium-operator --timeout=600s"
+  changed_when: false
+

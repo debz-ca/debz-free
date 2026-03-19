@@ -1,0 +1,27 @@
+---
+# Role: k8s_pkgs defaults
+#
+# This role installs kubelet/kubeadm/kubectl from pkgs.k8s.io.
+# Determinism model:
+#   1) If group_vars/all/k8s_versions.yml provides k8s_semver_pinned and k8s_deb_versions, those are authoritative.
+#   2) Else, if k8s_full_version is provided, use it.
+#   3) Else, if k8s_version_auto=true, resolve via k8s_release_channel_url (stable.txt).
+#
+# NOTE: Even when k8s_version_auto=true, a non-empty k8s_semver_pinned wins.
+
+# If true, discover stable version from k8s_release_channel_url (run_once, delegated to localhost)
+k8s_version_auto: true
+
+# Where to fetch the stable version string (returns e.g. "v1.35.0")
+k8s_release_channel_url: "https://dl.k8s.io/release/stable.txt"
+
+# Used only when k8s_version_auto=false and k8s_semver_pinned is empty (example: "v1.35.0")
+k8s_full_version: ""
+
+# Optional explicit repo minor selector (example: "v1.35").
+# If empty, it is derived from the resolved semver.
+k8s_minor_repo: ""
+
+# If true, allow upgrading kubelet/kubeadm/kubectl when already installed
+k8s_allow_upgrade: false
+

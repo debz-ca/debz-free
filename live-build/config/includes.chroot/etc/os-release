@@ -1,0 +1,9 @@
+PRETTY_NAME="debz (trixie)"
+NAME="debz"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+VERSION_CODENAME=trixie
+ID=debian
+HOME_URL="https://debz.ca"
+SUPPORT_URL="https://debz.ca"
+BUG_REPORT_URL="https://debz.ca"

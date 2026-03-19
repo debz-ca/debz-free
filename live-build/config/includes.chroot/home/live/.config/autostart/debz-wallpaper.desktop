@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Debz Wallpaper
+Exec=/usr/bin/debz-apply-live-wallpaper
+TryExec=/usr/bin/debz-apply-live-wallpaper
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,6 @@
+[Unit]
+Description=Debz ZFS Snapshot Service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/debz-snapshot

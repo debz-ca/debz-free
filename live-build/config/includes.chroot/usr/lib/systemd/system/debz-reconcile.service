@@ -1,0 +1,16 @@
+[Unit]
+Description=debz Infrastructure Reconciliation Loop
+Documentation=https://debz.ca
+After=network.target salt-master.service
+ConditionPathExists=/usr/local/sbin/debz-reconcile
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/debz-reconcile --interval 30
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
