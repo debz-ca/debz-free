@@ -483,7 +483,7 @@ def get_disks():
     """Return list of usable block devices."""
     try:
         out = subprocess.check_output(
-            ["lsblk", "-J", "-o", "NAME,SIZE,MODEL,TYPE,RM,MOUNTPOINT"],
+            ["lsblk", "-J", "-o", "NAME,SIZE,MODEL,TYPE,RM,MOUNTPOINT,ROTA,TRAN"],
             text=True
         )
         data = json.loads(out)
@@ -496,6 +496,8 @@ def get_disks():
                     "model":      d.get("model", "").strip(),
                     "removable":  d.get("rm", False),
                     "mountpoint": d.get("mountpoint"),
+                    "rota":       d.get("rota", None),
+                    "tran":       d.get("tran", ""),
                 })
         return disks
     except Exception as e:
@@ -1096,6 +1098,14 @@ async def ws_handler(websocket):
                         content = f"(log not found: {log_path})"
                     await websocket.send(json.dumps({"type": "log_content", "key": key, "content": content}))
 
+                elif action == "install_state":
+                    state = {"running": False, "rc": None}
+                    try:
+                        state = json.loads(INSTALL_STATE_PATH.read_text())
+                    except Exception:
+                        pass
+                    await websocket.send(json.dumps({"type": "install_state", **state}))
+
                 elif action == "network_info":
                     ifaces = []
                     try:
@@ -1272,6 +1282,8 @@ async def _run_wipe_disk(websocket, msg):
            f"sync; echo 'Wipe complete.'"]
     await _stream_proc(websocket, cmd, target="install")
 
+INSTALL_STATE_PATH = Path("/run/debz/install_state.json")
+
 async def _run_install(websocket, msg):
     params = msg.get("params", {})
     # Map frontend 'role' → DEBZ_PROFILE (installer key)
@@ -1289,10 +1301,15 @@ async def _run_install(websocket, msg):
         f.write("\n".join(answers) + "\n")
     os.chmod(answers_path, 0o600)
 
+    # Persist install state so reconnecting clients can restore UI
+    INSTALL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    INSTALL_STATE_PATH.write_text(json.dumps({"running": True, "rc": None}))
+
     target = msg.get("_target", "install")
-    await _stream_proc(websocket,
+    rc = await _stream_proc(websocket,
         ["/usr/local/bin/debz-install-target", "--config", answers_path],
         target=target)
+    INSTALL_STATE_PATH.write_text(json.dumps({"running": False, "rc": rc}))
 
 async def _run_spawn(websocket, msg):
     params = msg.get("params", {})
