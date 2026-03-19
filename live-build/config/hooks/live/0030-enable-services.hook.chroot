@@ -19,8 +19,9 @@ die() {
 enable_if_present() {
     local unit="$1"
     local found=false
+    # Try the unit name as-is, then with .service suffix (for bare names like "ssh", "gdm")
     for dir in /lib/systemd/system /usr/lib/systemd/system /etc/systemd/system; do
-        if [[ -f "${dir}/${unit}" ]]; then
+        if [[ -f "${dir}/${unit}" ]] || [[ -f "${dir}/${unit}.service" ]]; then
             found=true
             break
         fi
