@@ -13,6 +13,10 @@ touch "${LOG}" 2>/dev/null || true
 
   systemctl --user daemon-reload 2>/dev/null || true
   /usr/bin/debz-apply-live-wallpaper || true
+
+  # Suppress "Set GNOME Terminal as default" nag
+  update-alternatives --set x-terminal-emulator /usr/bin/gnome-terminal.wrapper \
+    2>/dev/null || true
 } >>"${LOG}" 2>&1
 
 exit 0
