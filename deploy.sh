@@ -2153,6 +2153,24 @@ cmd_publish() {
     iso="$(latest_iso)"
     [[ -n "$iso" ]] || die "No ISO found — run: ./deploy.sh build first"
 
+    # ── Strip build/test keys before publishing ──────────────────────────
+    # The build host SSH key is pre-populated in the webui for testing.
+    # Remove it from the ISO before uploading to Cloudflare R2.
+    local _build_key="AAAAC3NzaC1lZDI1NTE5AAAAIORqzDV2RRB7B0JJt0qSIZGySSY1rb8Y182LLN48fnu8"
+    local _webui_html="$ROOT/live-build/config/includes.chroot/usr/local/share/debz-webui/active/index.html"
+    local _ssh_init="$ROOT/live-build/config/includes.chroot/usr/local/sbin/debz-live-ssh-init"
+    if grep -q "$_build_key" "$_webui_html" 2>/dev/null; then
+        log "Stripping build host SSH key from ISO for public release..."
+        # Clear the textarea default value
+        sed -i "s|>ssh-ed25519 ${_build_key}[^<]*</textarea>|></textarea>|" "$_webui_html"
+        cp "$_webui_html" "${_webui_html%active/index.html}free/index.html"
+        # Remove the build key block from live-ssh-init
+        sed -i '/Pre-authorize the build host key/,/log "Build host key pre-authorized/d' "$_ssh_init"
+        log "Build key stripped — rebuilding ISO for release..."
+        cmd_build
+        iso="$(latest_iso)"
+    fi
+
     version="${1:-${R2_VERSION:-v1.0.0}}"
     edition="${EDITION:-free}"
     dest="debz-${edition}-${version}-amd64.iso"
