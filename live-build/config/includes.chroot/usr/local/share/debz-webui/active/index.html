@@ -29,8 +29,14 @@
 /* progress bar */
 .progress-bar-wrap { background:var(--surface2); border-radius:6px; height:8px; margin-bottom:0.75rem; overflow:hidden; }
 .progress-bar { height:100%; width:0%; background:#8b5cf6; border-radius:6px; transition:width 0.4s ease; }
-.progress-bar.active { animation:pulse-glow 2.4s ease-in-out infinite; box-shadow:0 0 8px rgba(139,92,246,0.5); }
-@keyframes pulse-glow { 0%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} 50%{background:#a78bfa;box-shadow:0 0 14px rgba(167,139,250,0.6)} 100%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} }
+.progress-bar.active { animation:pulse-glow 8s ease-in-out infinite; }
+@keyframes pulse-glow {
+  0%   { background:#1e2533; box-shadow:0 0 4px rgba(30,37,51,0.3); }
+  25%  { background:#5b21b6; box-shadow:0 0 12px rgba(91,33,182,0.5); }
+  50%  { background:#a78bfa; box-shadow:0 0 24px rgba(167,139,250,0.7), 0 0 48px rgba(139,92,246,0.3); }
+  75%  { background:#5b21b6; box-shadow:0 0 12px rgba(91,33,182,0.5); }
+  100% { background:#1e2533; box-shadow:0 0 4px rgba(30,37,51,0.3); }
+}
 </style>
 </head>
 <body>
