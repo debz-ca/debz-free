@@ -7,7 +7,7 @@ k_profile_packages() {
   local profile="${DEBZ_PROFILE:-server}"
   case "$profile" in
     server)
-      echo "openssh-server sudo curl ca-certificates vim less systemd-resolved systemd-timesyncd wireguard-tools iproute2 tmux eject sanoid python3 python3-websockets python3-yaml htop net-tools ethtool nftables chrony tcpdump"
+      echo "openssh-server sudo curl ca-certificates vim less systemd-resolved chrony wireguard-tools iproute2 tmux eject sanoid python3 python3-websockets python3-yaml htop net-tools ethtool nftables tcpdump"
       ;;
     client)
       echo "openssh-server sudo curl ca-certificates vim less network-manager wireguard-tools iproute2"
