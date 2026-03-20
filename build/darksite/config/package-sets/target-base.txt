@@ -60,6 +60,15 @@ apt-utils
 
 # Proxmox / hypervisor guest integration
 qemu-guest-agent
+open-vm-tools
+
+# Web UI backend
+python3
+python3-websockets
+python3-yaml
+
+# Hardware
+eject
 
 # Monitoring / ops
 htop

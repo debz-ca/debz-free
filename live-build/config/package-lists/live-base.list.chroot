@@ -46,6 +46,7 @@ firmware-qlogic
 
 # Virtualisation guest agent
 qemu-guest-agent
+open-vm-tools
 
 # Filesystems / storage helpers
 btrfs-progs

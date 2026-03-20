@@ -10,3 +10,4 @@ mtr-tiny
 sysstat
 acl
 attr
+chrony

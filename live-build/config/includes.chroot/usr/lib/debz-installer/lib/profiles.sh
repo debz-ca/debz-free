@@ -7,7 +7,7 @@ k_profile_packages() {
   local profile="${DEBZ_PROFILE:-server}"
   case "$profile" in
     server)
-      echo "openssh-server sudo curl ca-certificates vim less systemd-resolved systemd-timesyncd wireguard-tools iproute2"
+      echo "openssh-server sudo curl ca-certificates vim less systemd-resolved systemd-timesyncd wireguard-tools iproute2 tmux eject sanoid python3 python3-websockets python3-yaml htop net-tools ethtool nftables chrony tcpdump"
       ;;
     client)
       echo "openssh-server sudo curl ca-certificates vim less network-manager wireguard-tools iproute2"
@@ -23,7 +23,7 @@ k_profile_packages() {
         gdm3 nautilus gnome-terminal loupe \
         adwaita-icon-theme fonts-cantarell gvfs gvfs-backends \
         firefox-esr \
-        tmux wireguard-tools iproute2"
+        tmux eject sanoid python3 python3-websockets python3-yaml htop net-tools wireguard-tools iproute2"
       ;;
 
     # ── debz templates ────────────────────────────────────────────────────────
@@ -182,6 +182,15 @@ k_install_system_files() {
   if [[ -d /usr/local/share/debz-webui/active ]]; then
     mkdir -p "${target}/usr/local/share/debz-webui"
     cp -r /usr/local/share/debz-webui/active/. "${target}/usr/local/share/debz-webui/"
+  fi
+
+  # ── Build SHA marker ──────────────────────────────────────────────────────
+  [[ -f /etc/debz-build-sha ]] && cp /etc/debz-build-sha "${target}/etc/debz-build-sha"
+
+  # ── Virtio / VMware kernel modules ──────────────────────────────────────
+  if [[ -f /etc/modules-load.d/virtio.conf ]]; then
+    mkdir -p "${target}/etc/modules-load.d"
+    cp /etc/modules-load.d/virtio.conf "${target}/etc/modules-load.d/virtio.conf"
   fi
 
   # ── Edition marker ────────────────────────────────────────────────────────

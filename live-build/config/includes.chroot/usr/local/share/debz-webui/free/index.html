@@ -27,9 +27,10 @@
 .modal-box .modal-detail { font-size:0.82rem; color:var(--muted); margin:0.6rem 0 1.25rem; line-height:1.6; }
 .modal-actions { display:flex; gap:0.75rem; justify-content:flex-end; }
 /* progress bar */
-.progress-bar-wrap { background:var(--surface2); border-radius:4px; height:6px; margin-bottom:0.75rem; overflow:hidden; }
-.progress-bar { height:100%; width:0%; background:var(--accent); border-radius:4px; transition:width 0.4s ease; animation:indeterminate 1.5s infinite linear; }
-@keyframes indeterminate { 0%{transform:translateX(-100%) scaleX(0.5)} 100%{transform:translateX(200%) scaleX(0.5)} }
+.progress-bar-wrap { background:var(--surface2); border-radius:6px; height:8px; margin-bottom:0.75rem; overflow:hidden; }
+.progress-bar { height:100%; width:0%; background:#8b5cf6; border-radius:6px; transition:width 0.4s ease; }
+.progress-bar.active { animation:pulse-glow 2.4s ease-in-out infinite; box-shadow:0 0 8px rgba(139,92,246,0.5); }
+@keyframes pulse-glow { 0%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} 50%{background:#a78bfa;box-shadow:0 0 14px rgba(167,139,250,0.6)} 100%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} }
 </style>
 </head>
 <body>
@@ -577,10 +578,10 @@ function handle(msg) {
         const bar = document.getElementById('install-progress');
         const st  = document.getElementById('install-status');
         if (msg.rc === 0) {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--accent)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = '#8b5cf6'; }
           if (st)  st.textContent = '✓ Install complete — system powering off…';
         } else {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
           if (st)  st.textContent = `✗ Install failed (exit ${msg.rc})`;
         }
       }
@@ -691,11 +692,11 @@ function handle(msg) {
         const st  = document.getElementById('install-status');
         const box = document.getElementById('install-log');
         if (msg.rc === 0) {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--accent)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = '#8b5cf6'; }
           if (st)  st.textContent = '✓ Install complete — system powering off…';
           if (box) box.textContent += '\n✓ Install complete. Initial snapshot taken. System powering off…\n';
         } else {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
           if (st)  st.textContent = `✗ Install failed (exit ${msg.rc})`;
           if (box) box.textContent += `\n✗ Install failed (exit ${msg.rc})\n`;
         }
@@ -896,6 +897,8 @@ function confirmInstall() {
   document.getElementById('install-running').style.display = 'block';
   document.getElementById('install-log').textContent = '';
   document.getElementById('install-status').textContent = 'Starting installer…';
+  const bar = document.getElementById('install-progress');
+  if (bar) bar.className = 'progress-bar active';
   send({ action: 'install', params: _installPayload });
 }
 
@@ -907,6 +910,8 @@ function wipeDisk() {
   document.getElementById('install-running').style.display = 'block';
   document.getElementById('install-log').textContent = '';
   document.getElementById('install-status').textContent = `Wiping ${disk}…`;
+  const wbar = document.getElementById('install-progress');
+  if (wbar) wbar.className = 'progress-bar active';
   send({ action: 'wipe_disk', disk });
 }
 

@@ -27,9 +27,10 @@
 .modal-box .modal-detail { font-size:0.82rem; color:var(--muted); margin:0.6rem 0 1.25rem; line-height:1.6; }
 .modal-actions { display:flex; gap:0.75rem; justify-content:flex-end; }
 /* progress bar */
-.progress-bar-wrap { background:var(--surface2); border-radius:4px; height:6px; margin-bottom:0.75rem; overflow:hidden; }
-.progress-bar { height:100%; width:0%; background:var(--accent); border-radius:4px; transition:width 0.4s ease; animation:indeterminate 1.5s infinite linear; }
-@keyframes indeterminate { 0%{transform:translateX(-100%) scaleX(0.5)} 100%{transform:translateX(200%) scaleX(0.5)} }
+.progress-bar-wrap { background:var(--surface2); border-radius:6px; height:8px; margin-bottom:0.75rem; overflow:hidden; }
+.progress-bar { height:100%; width:0%; background:#8b5cf6; border-radius:6px; transition:width 0.4s ease; }
+.progress-bar.active { animation:pulse-glow 2.4s ease-in-out infinite; box-shadow:0 0 8px rgba(139,92,246,0.5); }
+@keyframes pulse-glow { 0%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} 50%{background:#a78bfa;box-shadow:0 0 14px rgba(167,139,250,0.6)} 100%{background:#5b21b6;box-shadow:0 0 6px rgba(91,33,182,0.4)} }
 </style>
 </head>
 <body>
@@ -74,9 +75,6 @@
 
   <div class="nav-section">Tools</div>
   <ul>
-    <li data-view="ansible">
-      <span class="nav-icon">⚙</span> Ansible
-    </li>
     <li data-view="logs">
       <span class="nav-icon">≡</span> Logs
     </li>
@@ -86,7 +84,6 @@
 <!-- ── Main ───────────────────────────────────────────────────────────────── -->
 <div id="main">
   <div id="topbar">
-    <span class="tb-title" id="tb-hostname">debz</span>
     <span id="status-dot"></span>
     <span id="status-text">connecting…</span>
   </div>
@@ -161,6 +158,9 @@
                 <div class="tc-sub">Headless + SSH</div>
               </div>
             </div>
+            <div id="role-summary" style="margin-top:0.6rem;font-size:0.8rem;color:var(--accent)">
+              ✓ Desktop selected — GNOME workstation + ZFS on root
+            </div>
           </div>
         </div>
 
@@ -191,6 +191,10 @@
               <label>Confirm password</label>
               <input type="password" id="install-pass2" placeholder="••••••••" oninput="checkPass()">
               <div class="pass-hint" id="pass-match"></div>
+            </div>
+            <div class="form-group" style="margin-top:0.5rem">
+              <label>SSH public key <span style="color:var(--muted);font-weight:400">(optional — paste authorized_keys entry)</span></label>
+              <textarea id="install-ssh-key" rows="3" placeholder="ssh-ed25519 AAAA… user@host" style="font-family:monospace;font-size:0.78rem;resize:vertical;width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:0.4rem 0.5rem;outline:none"></textarea>
             </div>
             <div class="form-group" style="margin-top:0.5rem">
               <label>ZFS encryption</label>
@@ -378,6 +382,12 @@
               <label for="net-dhcp" style="cursor:pointer;font-size:0.9rem;margin:0">Use DHCP <span style="color:var(--muted)">(recommended)</span></label>
             </div>
             <div id="net-static" style="display:none">
+              <div class="form-group">
+                <label>Interface</label>
+                <select id="net-iface">
+                  <option value="">— detecting… —</option>
+                </select>
+              </div>
               <div class="net-row">
                 <div class="form-group">
                   <label>IP Address</label>
@@ -453,38 +463,6 @@
       </div>
     </div>
 
-    <!-- ── Ansible ──────────────────────────────────────────────────────────── -->
-    <div class="view" id="view-ansible">
-      <div class="page-title">Ansible</div>
-      <div class="page-sub">Run playbooks on this node (standalone / masterless)</div>
-
-      <div class="panel">
-        <div class="panel-hdr">⚙ Run Playbook</div>
-        <div class="panel-body">
-          <div class="form-group">
-            <label>Playbook</label>
-            <select id="ansible-playbook">
-              <option value="/srv/ansible/playbooks/02_common.yml">02_common — baseline packages</option>
-              <option value="/srv/ansible/playbooks/03_containerd.yml">03_containerd — container runtime</option>
-              <option value="/srv/ansible/playbooks/04_k8s_packages.yml">04_k8s_packages — Kubernetes packages</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Extra vars (JSON)</label>
-            <input type="text" id="ansible-extra-vars" placeholder='{"key":"value"}'>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="runAnsible()">▶ Run</button>
-        </div>
-      </div>
-
-      <div class="panel" id="ansible-output-panel" style="display:none">
-        <div class="panel-hdr">≡ Output</div>
-        <div class="panel-body">
-          <div class="log-box" id="ansible-log" style="height:280px"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- ── Logs ─────────────────────────────────────────────────────────────── -->
     <div class="view" id="view-logs">
       <div class="page-title">Logs</div>
@@ -516,6 +494,14 @@ let   ws      = null;
 let   wsReady = false;
 let   diskTimer = null;
 
+// Auto-refresh dashboard stats every 30 s
+setInterval(() => {
+  const dash = document.getElementById('view-dashboard');
+  if (dash && dash.classList.contains('active')) {
+    send({ action: 'system_info' });
+  }
+}, 30000);
+
 function connect() {
   ws = new WebSocket(wsUrl);
   ws.onopen = () => {
@@ -526,6 +512,7 @@ function connect() {
     requestDisks();
     refreshZFS();
     refreshSnapshots();
+    send({ action: 'install_state' });
   };
   ws.onclose = () => {
     wsReady = false;
@@ -569,8 +556,35 @@ function handle(msg) {
       document.getElementById('s-cpus').textContent      = d.cpus     || '—';
       document.getElementById('s-mem').textContent       = d.memory_total || '—';
       document.getElementById('s-mem-free').textContent  = 'free: ' + (d.memory_free || '—');
-      document.getElementById('tb-hostname').textContent = d.hostname || 'debz';
       document.title = (d.hostname || 'debz') + ' — debz';
+      document.title = (d.hostname || 'debz') + ' — debz';
+      break;
+    }
+
+    case 'install_state': {
+      if (msg.running) {
+        // Install still running in background (page was refreshed mid-install)
+        document.getElementById('install-idle').style.display    = 'none';
+        document.getElementById('install-running').style.display = 'block';
+        document.getElementById('install-status').textContent    = 'Install in progress…';
+        // Switch to Install view so user can see it
+        document.querySelectorAll('#sidebar li').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+        const li = document.querySelector('#sidebar li[data-view="install"]');
+        if (li) li.classList.add('active');
+        document.getElementById('view-install').classList.add('active');
+      } else if (msg.rc !== null && msg.rc !== undefined) {
+        // Install finished — show result if user is on install view
+        const bar = document.getElementById('install-progress');
+        const st  = document.getElementById('install-status');
+        if (msg.rc === 0) {
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = '#8b5cf6'; }
+          if (st)  st.textContent = '✓ Install complete — system powering off…';
+        } else {
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
+          if (st)  st.textContent = `✗ Install failed (exit ${msg.rc})`;
+        }
+      }
       break;
     }
 
@@ -580,6 +594,22 @@ function handle(msg) {
       if (primary) {
         document.getElementById('s-nic').textContent = primary.name + (primary.up ? ' ▲' : ' ▼');
         document.getElementById('s-ip').textContent  = primary.addr || '—';
+      }
+      // Populate NIC picker in install form
+      const nicSel = document.getElementById('net-iface');
+      if (nicSel) {
+        const prev = nicSel.value;
+        nicSel.innerHTML = '';
+        (msg.interfaces || []).forEach(ifc => {
+          if (ifc.name === 'lo') return;
+          const o = document.createElement('option');
+          o.value = ifc.name;
+          const addr = ifc.addr ? ` — ${ifc.addr}` : '';
+          const state = ifc.up ? '▲' : '▽';
+          o.textContent = `${state} ${ifc.name}${addr}`;
+          nicSel.appendChild(o);
+        });
+        if (prev) nicSel.value = prev;
       }
       break;
     }
@@ -594,7 +624,15 @@ function handle(msg) {
         disks.forEach(d => {
           const o = document.createElement('option');
           o.value = d.name;
-          o.textContent = `${d.name}  (${d.size || '?'})  ${d.model || ''}`.trim();
+          const tran = (d.tran || '').toLowerCase();
+          let dtype = 'Disk';
+          if (tran === 'nvme')        dtype = 'NVMe';
+          else if (tran === 'usb')    dtype = 'USB';
+          else if (d.rota === false || d.rota === 0) dtype = 'SSD';
+          else if (d.rota === true  || d.rota === 1) dtype = 'HDD';
+          else if (!tran)             dtype = 'Virtual';
+          const label = [d.name, d.size || '?', dtype, d.model].filter(Boolean).join('  ·  ');
+          o.textContent = label;
           sel.appendChild(o);
         });
         clearInterval(diskTimer);
@@ -635,8 +673,7 @@ function handle(msg) {
     case 'log_line': {
       const target = msg.target || '';
       let boxId = null;
-      if (target === 'install')          boxId = 'install-log';
-      else if (target === 'ansible_log') boxId = 'ansible-log';
+      if (target === 'install') boxId = 'install-log';
       if (boxId) {
         const box = document.getElementById(boxId);
         if (box) { box.textContent += (msg.line || '') + '\n'; box.scrollTop = box.scrollHeight; }
@@ -655,11 +692,11 @@ function handle(msg) {
         const st  = document.getElementById('install-status');
         const box = document.getElementById('install-log');
         if (msg.rc === 0) {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--accent)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = '#8b5cf6'; }
           if (st)  st.textContent = '✓ Install complete — system powering off…';
           if (box) box.textContent += '\n✓ Install complete. Initial snapshot taken. System powering off…\n';
         } else {
-          if (bar) { bar.style.animation = 'none'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
+          if (bar) { bar.className = 'progress-bar'; bar.style.width = '100%'; bar.style.background = 'var(--danger)'; }
           if (st)  st.textContent = `✗ Install failed (exit ${msg.rc})`;
           if (box) box.textContent += `\n✗ Install failed (exit ${msg.rc})\n`;
         }
@@ -677,13 +714,6 @@ function handle(msg) {
     case 'install_done': {
       const box = document.getElementById('install-log');
       box.textContent += '\n✓ Install complete. System powering off…\n';
-      break;
-    }
-
-    case 'ansible_log': {
-      const box = document.getElementById('ansible-log');
-      box.textContent += (msg.line || '') + '\n';
-      box.scrollTop = box.scrollHeight;
       break;
     }
 
@@ -706,6 +736,7 @@ document.querySelectorAll('#sidebar li[data-view]').forEach(li => {
     document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
     li.classList.add('active');
     document.getElementById('view-' + li.dataset.view).classList.add('active');
+    if (li.dataset.view === 'dashboard') { send({ action: 'system_info' }); refreshZFS(); refreshSnapshots(); }
     if (li.dataset.view === 'zfs')  { refreshZFS(); refreshSnapshots(); listBEs(); }
     if (li.dataset.view === 'logs') { loadLog(); }
     if (li.dataset.view === 'install') {
@@ -716,9 +747,15 @@ document.querySelectorAll('#sidebar li[data-view]').forEach(li => {
 });
 
 // ── Target type selection ────────────────────────────────────────────────────
+const ROLE_DESCS = {
+  desktop: 'Desktop selected — GNOME workstation + ZFS on root',
+  server:  'Server selected — headless SSH node + ZFS on root',
+};
 function selectTarget(el) {
   document.querySelectorAll('.target-card').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
+  const sum = document.getElementById('role-summary');
+  if (sum) sum.textContent = '✓ ' + (ROLE_DESCS[el.dataset.role] || el.dataset.role);
 }
 
 // ── DHCP toggle ──────────────────────────────────────────────────────────────
@@ -794,6 +831,8 @@ function startInstall() {
   const locale   = document.getElementById('install-locale').value || 'en_US.UTF-8';
   const role     = (document.querySelector('.target-card.selected') || {}).dataset?.role || 'desktop';
   const dhcp     = document.getElementById('net-dhcp').checked;
+  const sshKey   = (document.getElementById('install-ssh-key')?.value || '').trim();
+  const netIface = document.getElementById('net-iface')?.value || '';
   const encrypt  = document.getElementById('install-encryption').value === '1';
   const encPass  = encrypt ? document.getElementById('enc-pass').value  : '';
   const encPass2 = encrypt ? document.getElementById('enc-pass2').value : '';
@@ -816,6 +855,8 @@ function startInstall() {
     password: pass, timezone, keyboard, locale, role,
     storage_mode: 'zfs', infra_mode: 'standalone',
     zfs_encrypt: encrypt ? '1' : '0',
+    ...(sshKey   ? { ssh_pubkey: sshKey }  : {}),
+    ...(netIface ? { net_iface: netIface } : {}),
     network_dhcp: dhcp ? 'yes' : 'no',
   };
   if (encrypt) params.zfs_passphrase = encPass;
@@ -848,10 +889,16 @@ function startInstall() {
 
 function confirmInstall() {
   document.getElementById('confirm-modal').classList.remove('open');
+  const diskLabel = document.getElementById('install-disk');
+  const diskText  = diskLabel?.options[diskLabel.selectedIndex]?.text || ((_installPayload || {}).disk || '');
+  if (!confirm(`⚠ This will permanently erase:\n\n  ${diskText}\n\nAll data will be lost. Continue with install?`)) return;
+
   document.getElementById('install-idle').style.display    = 'none';
   document.getElementById('install-running').style.display = 'block';
   document.getElementById('install-log').textContent = '';
   document.getElementById('install-status').textContent = 'Starting installer…';
+  const bar = document.getElementById('install-progress');
+  if (bar) bar.className = 'progress-bar active';
   send({ action: 'install', params: _installPayload });
 }
 
@@ -863,16 +910,9 @@ function wipeDisk() {
   document.getElementById('install-running').style.display = 'block';
   document.getElementById('install-log').textContent = '';
   document.getElementById('install-status').textContent = `Wiping ${disk}…`;
+  const wbar = document.getElementById('install-progress');
+  if (wbar) wbar.className = 'progress-bar active';
   send({ action: 'wipe_disk', disk });
-}
-
-// ── Ansible ──────────────────────────────────────────────────────────────────
-function runAnsible() {
-  const pb    = document.getElementById('ansible-playbook').value;
-  const extra = document.getElementById('ansible-extra-vars').value.trim();
-  document.getElementById('ansible-output-panel').style.display = 'block';
-  document.getElementById('ansible-log').textContent = '';
-  send({ action: 'ansible_run', playbook: pb, extra_vars: extra || '{}' });
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
@@ -886,6 +926,19 @@ function loadLog() {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Auto-detect browser timezone and pre-select in dropdown
+(function() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const sel = document.getElementById('install-timezone');
+    if (sel && tz) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === tz) { sel.selectedIndex = i; break; }
+      }
+    }
+  } catch(e) {}
+})();
 
 connect();
 </script>
