@@ -22,6 +22,7 @@ k_profile_packages() {
         gnome-shell gnome-session gnome-control-center gnome-settings-daemon \
         gdm3 nautilus gnome-terminal loupe \
         adwaita-icon-theme fonts-cantarell gvfs gvfs-backends \
+        gnome-keyring \
         firefox-esr \
         tmux eject sanoid python3 python3-websockets python3-yaml htop net-tools wireguard-tools iproute2"
       ;;

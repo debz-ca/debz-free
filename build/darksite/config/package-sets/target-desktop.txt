@@ -17,6 +17,7 @@ adwaita-icon-theme
 fonts-cantarell
 gvfs
 gvfs-backends
+gnome-keyring
 firefox-esr
 fonts-liberation
 fonts-noto-core
