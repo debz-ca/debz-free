@@ -198,11 +198,13 @@ k_install_system_files() {
   mkdir -p "${target}/etc/debz"
   [[ -f /etc/debz/edition ]] && cp /etc/debz/edition "${target}/etc/debz/edition"
 
-  # ── User tools: mdir (ZFS dataset creator) + adduser.local hook ────────────
+  # ── User tools: ZFS helpers + adduser.local hook ────────────────────────────
   mkdir -p "${target}/usr/local/bin" "${target}/usr/local/sbin"
-  [[ -x /usr/local/bin/mdir ]] && \
-    cp /usr/local/bin/mdir "${target}/usr/local/bin/mdir" && \
-    chmod +x "${target}/usr/local/bin/mdir"
+  for _tool in mdir debz-status debz-snapshot debz-clone debz-df; do
+    [[ -x "/usr/local/bin/${_tool}" ]] && \
+      cp "/usr/local/bin/${_tool}" "${target}/usr/local/bin/${_tool}" && \
+      chmod +x "${target}/usr/local/bin/${_tool}"
+  done
   [[ -f /usr/local/sbin/adduser.local ]] && \
     cp /usr/local/sbin/adduser.local "${target}/usr/local/sbin/adduser.local" && \
     chmod +x "${target}/usr/local/sbin/adduser.local"
